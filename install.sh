@@ -77,9 +77,6 @@ user_pref("browser.urlbar.trimHttps", true);
 user_pref("browser.urlbar.formatting.enabled", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled", true);
-user_pref("almost-arc.pip-on-blur", true);
-user_pref("almost-arc.pip-debug", false);
-user_pref("almost-arc.undo-debug", false);
 // <<< almost-arc
 PREFS
 

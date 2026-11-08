@@ -77,6 +77,20 @@ To remove: `./uninstall.sh`.
 | `vendor/fx-autoconfig/` | Script loader used by `install.sh` |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |
 
+## Settings
+
+- **With Sine:** Zen → Settings → Sine Mods → Almost Arc.
+- **Without Sine:** open `about:config` (type it in the address bar and accept the warning), then search `almost-arc`.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes |
+| `almost-arc.pip-on-blur` | on | Auto PiP when you switch to another app or desktop (macOS) |
+| `almost-arc.domain-only` | off | Show only the domain in the URL pill |
+| `almost-arc.pip-debug`, `almost-arc.undo-debug` | off | Write debug logs to your profile folder |
+
+Restart Zen after changing one. Settings from 1.0.0 (`arc-toolbar.*`) are carried over to these names automatically.
+
 ## Tweaking
 
 The sizes and colors are CSS variables at the top of `chrome.css`:

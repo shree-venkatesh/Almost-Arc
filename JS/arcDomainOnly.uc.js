@@ -12,6 +12,17 @@
 (function () {
   // Off by default (Arc shows the full URL). Toggle in the mod settings or set
   // almost-arc.domain-only = true in about:config.
+  // List the setting in about:config with its default, and carry over a value set
+  // under the 1.0.0 name (arc-toolbar.domain-only), then remove that.
+  try {
+    const pref = "almost-arc.domain-only", old = "arc-toolbar.domain-only";
+    Services.prefs.getDefaultBranch("").setBoolPref(pref, false);
+    if (Services.prefs.prefHasUserValue(old)) {
+      if (!Services.prefs.prefHasUserValue(pref)) Services.prefs.setBoolPref(pref, Services.prefs.getBoolPref(old, false));
+      Services.prefs.clearUserPref(old);
+    }
+  } catch (e) {}
+
   const ENABLED = Services.prefs.getBoolPref("almost-arc.domain-only", false);
 
   if (!ENABLED || window.__arcDomainOnly) return;

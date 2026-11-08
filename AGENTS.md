@@ -32,7 +32,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
 - Zen must be **closed** before `./install.sh` (it refuses otherwise). Restart Zen to pick up changes.
 - The loader's `config.js` lives in `/Applications/Zen.app/Contents/Resources` and is wiped by Zen updates; rerunning `./install.sh` restores it.
-- `install.sh` writes prefs between `// >>> almost-arc` and `// <<< almost-arc` in `user.js`. Keep that block in sync with `preferences.json`.
+- `install.sh` writes the recommended **Zen/Firefox** prefs from `preferences.json` between `// >>> almost-arc` and `// <<< almost-arc` in `user.js`; keep that block in sync. Do **not** put `almost-arc.*` prefs there (user.js would reset them every startup): each script registers its own `almost-arc.*` defaults with `Services.prefs.getDefaultBranch("")` so they show in about:config for every install method, and migrates the 1.0.0 `arc-toolbar.*` value if present.
 - Debug logs (off by default) go to the profile dir: `almost-arc.pip-debug` → `almost-arc-pip-debug.log`, `almost-arc.undo-debug` → `almost-arc-undo-debug.log`.
 - There are no automated tests; verify in a running Zen.
 

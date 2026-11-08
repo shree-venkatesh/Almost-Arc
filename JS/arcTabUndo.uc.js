@@ -19,6 +19,20 @@
 (function () {
   if (window.__arcTabUndo) return;
   window.__arcTabUndo = true;
+
+  // List this script's settings in about:config with their defaults, and carry over
+  // values set under the 1.0.0 names (arc-toolbar.*), then remove those.
+  for (const [name, def] of [["tab-undo", true], ["undo-debug", false]]) {
+    try {
+      const pref = `almost-arc.${name}`, old = `arc-toolbar.${name}`;
+      Services.prefs.getDefaultBranch("").setBoolPref(pref, def);
+      if (Services.prefs.prefHasUserValue(old)) {
+        if (!Services.prefs.prefHasUserValue(pref)) Services.prefs.setBoolPref(pref, Services.prefs.getBoolPref(old, def));
+        Services.prefs.clearUserPref(old);
+      }
+    } catch (e) {}
+  }
+
   if (!Services.prefs.getBoolPref("almost-arc.tab-undo", true)) return;
 
   const { SessionStore } = ChromeUtils.importESModule("moz-src:///browser/components/sessionstore/SessionStore.sys.mjs");

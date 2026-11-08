@@ -14,6 +14,20 @@
 (function () {
   if (window.__arcAutoPip) return;
   window.__arcAutoPip = true;
+
+  // List this script's settings in about:config with their defaults, and carry over
+  // values set under the 1.0.0 names (arc-toolbar.*), then remove those.
+  for (const [name, def] of [["pip-on-blur", true], ["pip-debug", false]]) {
+    try {
+      const pref = `almost-arc.${name}`, old = `arc-toolbar.${name}`;
+      Services.prefs.getDefaultBranch("").setBoolPref(pref, def);
+      if (Services.prefs.prefHasUserValue(old)) {
+        if (!Services.prefs.prefHasUserValue(pref)) Services.prefs.setBoolPref(pref, Services.prefs.getBoolPref(old, def));
+        Services.prefs.clearUserPref(old);
+      }
+    } catch (e) {}
+  }
+
   if (AppConstants.platform !== "macosx") return;
   if (!Services.prefs.getBoolPref("almost-arc.pip-on-blur", true)) return;
 
