@@ -24,6 +24,9 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL display (`almost-arc.domain-only`) |
 | `install.sh` / `uninstall.sh` | Non-Sine install: fx-autoconfig loader, CSS import, scripts, `user.js` block |
 | `vendor/fx-autoconfig/` | Vendored script loader (its own license) |
+| `site/` | almostarc.net: one self-contained `index.html` (currently a placeholder; the owner is designing the real page themselves). Analytics: GoatCounter (`shree-venkatesh.goatcounter.com`, no cookies) |
+| `.github/workflows/pages.yml` | Deploys `site/` to GitHub Pages on pushes to `main` that touch it |
+| `.github/workflows/update-homebrew.yml` | On a published Release, updates the formula in `shree-venkatesh/homebrew-tap` |
 
 ## Install / test loop
 
