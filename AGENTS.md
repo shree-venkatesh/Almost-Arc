@@ -1,7 +1,10 @@
 # Almost Arc — agent instructions
 
 Almost Arc makes Zen Browser look and behave like Arc. It ships as a Sine mod
-(`theme.json`) and can also be installed without Sine via `./install.sh`.
+(`theme.json`) and can also be installed without Sine via `./install.sh`, or via
+Homebrew (`brew install shree-venkatesh/tap/almost-arc`, formula in the
+`shree-venkatesh/homebrew-tap` repo; it wraps `install.sh` / `uninstall.sh` as
+`almost-arc install|uninstall`).
 License: MPL-2.0. Author: shree-venkatesh. Target: Zen 1.24.x (Firefox 159) on
 macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
@@ -63,3 +66,9 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 1. Bump `version` in `theme.json`.
 2. Update `README.md` (features, settings, limitations) if behavior changed.
 3. Commit, push to `main`, then `git tag vX.Y.Z && git push --tags`.
+4. Create the GitHub Release for the tag (`gh release create vX.Y.Z --verify-tag`).
+5. Publishing the Release (not a bare tag, not a pre-release) runs
+   `.github/workflows/update-homebrew.yml`, which points `Formula/almost-arc.rb` in
+   `shree-venkatesh/homebrew-tap` at the new tarball. It needs the
+   `HOMEBREW_TAP_TOKEN` secret (fine-grained token, Contents read/write on the tap only).
+   Check the Actions tab; rerun it manually with the tag if it failed.

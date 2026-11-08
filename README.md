@@ -22,6 +22,18 @@ Built and tested on **Zen 1.24.1b (Firefox 159), macOS**.
 4. In the mod's settings, set the recommended options: single toolbar **off**, hide toolbar in compact mode **off**, floating address bar **Always**, URL trimming **on**, and auto-PiP to taste.
 5. Restart Zen.
 
+## Install with Homebrew (macOS)
+
+```bash
+brew install shree-venkatesh/tap/almost-arc
+almost-arc install
+```
+
+Quit Zen before running `almost-arc install`. It runs the same `install.sh` described below, so the same steps apply: clear the startup cache afterwards, and rerun `almost-arc install` after every Zen update.
+
+- **Update:** `brew upgrade almost-arc`, then `almost-arc install`.
+- **Remove:** `almost-arc uninstall`, then `brew uninstall almost-arc`.
+
 ## Install without Sine
 
 ```bash
