@@ -1,0 +1,395 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/* =====================================================================
+   Almost Arc — Zen mod (chrome.css)
+   Built against Zen 1.24.1b / Firefox 159.
+
+   - The top toolbar is the top of the page card (rounded corners, shadow),
+     with a full-height sidebar beside it.
+   - Centered URL pill (static label; opens Zen's floating address bar).
+   - Arc-style essentials tiles and hidden-sidebar layout.
+   Page-matched toolbar color, the URL pill, moved buttons, the pop-out
+   sidebar, auto-PiP and Cmd+Z tab undo come from the scripts in JS/.
+   Recommended prefs are listed in the README (Sine: mod settings).
+   ===================================================================== */
+
+:root {
+  /* ---- tweak these ---- */
+  --arc-bar-height: 34px;                                  /* toolbar height */
+  --arc-bar-bg: light-dark(#ffffff, #202020);              /* toolbar color before a page is sampled */
+  --arc-bar-divider: light-dark(rgba(0,0,0,.07), rgba(255,255,255,.06));
+  --arc-bar-pad-start: 6px;                                /* space before the first toolbar button */
+  --arc-url-max-width: 640px;                              /* widest the URL pill gets */
+  --arc-url-inset: 6px;                                    /* gap above/below the URL pill */
+  --arc-url-pad: 8px;                                      /* inner side padding of the (hidden) real URL bar */
+  --arc-url-hover-bg: light-dark(rgba(0,0,0,.05), rgba(255,255,255,.06));
+  --arc-url-focus-bg: light-dark(rgba(0,0,0,.06), rgba(255,255,255,.08));
+  /* Essentials tiles (Arc-style) */
+  --arc-tile-bg: rgba(255, 255, 255, .14);
+  --arc-tile-hover-bg: rgba(255, 255, 255, .22);
+  --arc-tile-selected-bg: rgba(255, 255, 255, .36);
+  --arc-tile-selected-border: rgba(255, 255, 255, .7);
+}
+
+:root:not([zen-single-toolbar="true"]):not([inDOMFullscreen="true"]):not([popup-window]) {
+
+  /* ---------- Toolbar = top of the content card ---------- */
+  #zen-appcontent-navbar-wrapper {
+    margin: var(--zen-element-separation) var(--zen-element-separation) 0 0 !important;
+    background: var(--arc-bar-bg) !important;
+    border-bottom: 1px solid var(--arc-bar-divider);
+    border-radius: calc(var(--zen-native-inner-radius) / var(--zen-squircle-value))
+                   calc(var(--zen-native-inner-radius) / var(--zen-squircle-value)) 0 0 !important;
+    corner-shape: round;
+    position: relative;
+    z-index: 2 !important;
+    min-height: var(--arc-bar-height) !important;
+    height: var(--arc-bar-height) !important;
+    transition: background-color .25s ease, color .25s ease !important;
+  }
+
+  /* Same shadow as the page card on the toolbar's top/sides (not the bottom,
+     so it doesn't fall onto the page) — toolbar + page read as one card.
+     Done on a pseudo-element so nothing else (like the URL dropdown) gets clipped. */
+  #zen-appcontent-navbar-wrapper::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: var(--zen-big-shadow);
+    clip-path: inset(-60px -60px 0 -60px);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* ---------- Page-matched tint (set by chrome/JS/arcToolbarTint.uc.js) ---------- */
+  #zen-appcontent-navbar-wrapper[arc-tone="dark"] {
+    color-scheme: dark;
+    color: #f2f2f2 !important;
+    --arc-bar-divider: rgba(255,255,255,.08);
+    --arc-url-hover-bg: rgba(255,255,255,.08);
+    --arc-url-focus-bg: rgba(255,255,255,.12);
+  }
+  #zen-appcontent-navbar-wrapper[arc-tone="light"] {
+    color-scheme: light;
+    color: #1c1c1c !important;
+    --arc-bar-divider: rgba(0,0,0,.08);
+    --arc-url-hover-bg: rgba(0,0,0,.06);
+    --arc-url-focus-bg: rgba(0,0,0,.08);
+  }
+  #zen-appcontent-navbar-wrapper[arc-tone] #nav-bar {
+    --toolbar-color: currentColor !important;
+    --toolbarbutton-icon-fill: currentColor !important;
+    --toolbar-field-text-color: currentColor !important;
+    color: inherit !important;
+  }
+  /* New tab / transparent pages: translucent card top, divider kept (like Arc) */
+  #zen-appcontent-navbar-wrapper[arc-tone="theme"] {
+    --arc-bar-divider: light-dark(rgba(0,0,0,.06), rgba(255,255,255,.08));
+  }
+
+  &[zen-right-side="true"] #zen-appcontent-navbar-wrapper {
+    margin: var(--zen-element-separation) 0 0 var(--zen-element-separation) !important;
+  }
+  /* Hidden-sidebar (compact) mode: card has margins on both sides */
+  &[zen-compact-mode="true"] #zen-appcontent-navbar-wrapper {
+    margin: var(--zen-element-separation) var(--zen-element-separation) 0 !important;
+    opacity: 1 !important;
+    overflow: visible !important;   /* let the card shadow show */
+    contain: none !important;
+  }
+  &[zen-compact-mode="true"] #zen-appcontent-navbar-container {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  /* Borderless fullscreen (Zen's "zen-no-padding"): the page goes edge-to-edge
+     with square corners, so the toolbar does too — no rounded corners/shadow */
+  &[zen-no-padding="true"] #zen-appcontent-navbar-wrapper {
+    border-radius: 0 !important;
+  }
+  &[zen-no-padding="true"] #zen-appcontent-navbar-wrapper::before {
+    box-shadow: none !important;
+  }
+
+  /* Window buttons inside the bar (compact / collapsed sidebar): show on hover only, like Arc */
+  #zen-appcontent-navbar-wrapper .titlebar-buttonbox-container {
+    opacity: 0;
+    transition: opacity .15s ease;
+  }
+  #zen-appcontent-navbar-wrapper:hover .titlebar-buttonbox-container {
+    opacity: 1;
+  }
+
+  #zen-appcontent-navbar-container,
+  #nav-bar {
+    min-height: var(--arc-bar-height) !important;
+    max-height: var(--arc-bar-height) !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  #nav-bar {
+    padding-block: 0 !important;
+    padding-inline-start: var(--arc-bar-pad-start) !important;   /* breathing room before back button */
+    margin-inline-start: 0 !important;
+    --toolbarbutton-inner-padding: 6px !important;
+  }
+
+  /* Content card below: flat top corners so it joins the toolbar */
+  #tabbrowser-tabbox #tabbrowser-tabpanels .browserSidebarContainer:not(.zen-glance-overlay) {
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
+  }
+
+  /* ---------- URL bar: centered, flat ----------
+     Its box is pinned to the toolbar height so the pill sits dead-center
+     (Zen uses different heights on empty tabs). */
+  #nav-bar #urlbar-container {
+    flex: 0 1 var(--arc-url-max-width) !important;
+    margin-inline: auto !important;
+    height: var(--arc-bar-height) !important;
+    min-height: var(--arc-bar-height) !important;
+    max-height: var(--arc-bar-height) !important;
+  }
+  #nav-bar #urlbar:not([breakout-extend]) {
+    --urlbar-container-height: var(--arc-bar-height) !important;
+    --urlbar-height: var(--arc-bar-height) !important;
+    --urlbar-min-height: var(--arc-bar-height) !important;
+    top: 0 !important;
+    height: var(--arc-bar-height) !important;
+    min-height: var(--arc-bar-height) !important;
+    margin-block: 0 !important;
+    padding-block: 0 !important;
+  }
+
+  #urlbar:not([breakout-extend]) {
+    .urlbar-background {
+      background: transparent !important;
+    }
+    &:hover .urlbar-background {
+      background: var(--arc-url-hover-bg) !important;
+    }
+    &[focused="true"] .urlbar-background {
+      background: var(--arc-url-focus-bg) !important;
+    }
+
+    /* URL text centered while idle; normal while editing */
+    &:not([focused="true"]) .urlbar-input {
+      text-align: center !important;
+    }
+
+    /* Padded pill, inset from the top/bottom of the bar so it doesn't fill it */
+    .urlbar-input-container {
+      padding-inline: var(--arc-url-pad) !important;
+    }
+    /* Remove extra inline space Zen/Firefox add inside the pill */
+    &:not([focused="true"]) .urlbar-input-box {
+      margin-inline: 0 !important;
+      padding-inline: 0 !important;
+    }
+    .urlbar-background {
+      margin: 0 !important;
+      inset: var(--arc-url-inset) 0 !important;   /* equal top/bottom inset */
+      height: auto !important;
+      border-radius: 7px !important;
+    }
+  }
+}
+
+/* ---------- Hidden-sidebar (compact) mode, Arc-style ----------
+   With chrome/JS/arcCompactSidebar.uc.js the window buttons live in the
+   pop-out sidebar, so the sidebar runs full height from the top. */
+:root[arc-compact-sidebar="true"][zen-compact-mode="true"]:not([zen-single-toolbar="true"]) {
+  /* Pop-out sidebar runs full window height (Zen subtracts the toolbar height) */
+  #navigator-toolbox:not([animate="true"]) {
+    margin-top: 0 !important;
+    top: calc(var(--zen-compact-float) / 2) !important;
+    bottom: calc(var(--zen-compact-float) / 2) !important;
+    height: calc(100% - var(--zen-compact-float)) !important;
+  }
+  #zen-sidebar-top-buttons .titlebar-buttonbox-container {
+    opacity: 1 !important;
+  }
+}
+
+/* Toolbar sidebar button (added by arcCompactSidebar.uc.js); only in hidden-sidebar mode */
+#arc-toolbar-sidebar-toggle {
+  list-style-image: url("chrome://browser/skin/zen-icons/sidebar.svg");
+}
+:root:not([arc-compact-sidebar="true"]) #arc-toolbar-sidebar-toggle,
+:root:not([zen-compact-mode="true"]) #arc-toolbar-sidebar-toggle {
+  display: none;
+}
+
+/* ---------- Buttons moved out of the URL pill (arcUrlbarButtons.uc.js) ---------- */
+#nav-bar #zen-copy-url-button[arc-moved],
+#nav-bar #zen-site-data-icon-button[arc-moved] {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 28px !important;
+  margin: auto 2px !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  -moz-window-dragging: no-drag;
+  & image {
+    width: 16px;
+    height: 16px;
+    -moz-context-properties: fill, fill-opacity;
+    fill: currentColor;
+  }
+  &:hover {
+    background: var(--arc-url-hover-bg) !important;
+  }
+}
+#nav-bar #zen-copy-url-button[arc-moved][disabled] {
+  opacity: .35 !important;
+  background: transparent !important;
+}
+/* Keep [copy][pill] centered as a group: copy button takes the left auto-margin */
+#nav-bar #zen-copy-url-button[arc-moved] {
+  margin-inline-start: auto !important;
+}
+#nav-bar #zen-copy-url-button[arc-moved] + #urlbar-container {
+  margin-inline-start: 0 !important;
+}
+
+/* ---------- Static URL pill (arcUrlbarFit.uc.js) ----------
+   With the floating address bar (zen.urlbar.behavior = "float") the toolbar
+   shows a static pill with the URL; clicking it opens the floating bar.
+   The real URL bar is invisible in the toolbar and only appears as the popup. */
+@media -moz-pref("zen.urlbar.behavior", "float") {
+  /* Flexible spaces around the URL bar pushed the pill off-center; the
+     auto margins below do the centering instead */
+  #nav-bar toolbarspring {
+    display: none !important;
+  }
+
+  /* [copy][pill] pinned to the exact center of the toolbar, independent of
+     whatever buttons sit on either side */
+  :root[arc-url-pill] #nav-bar {
+    position: relative !important;
+  }
+  /* The container fills the middle of the row (keeps extensions on the right) */
+  :root:root[arc-url-pill][arc-url-pill][arc-url-pill] #nav-bar #urlbar-container {
+    position: static !important;
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    container-type: normal !important;
+    contain: none !important;
+  }
+  /* ...and only the [copy][pill] group is pinned to the exact center */
+  #arc-url-group {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    /* never wider than the free space between the side buttons (set by script) */
+    max-width: min(var(--arc-url-max-width), var(--arc-url-avail, 9999px));
+    z-index: 1;
+  }
+  :root[arc-url-pill] #arc-url-group > #zen-copy-url-button[arc-moved] {
+    margin: auto 0 !important;
+    flex: none;
+  }
+  :root[arc-url-pill] #urlbar:not([zen-floating-urlbar="true"]) {
+    position: absolute !important;
+    inset-inline: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+  /* Zen tints the pill's spot while the floating bar is open — keep it untouched */
+  :root:root[arc-url-pill] #nav-bar #urlbar-container:has(#urlbar[zen-floating-urlbar="true"]) {
+    background: transparent !important;
+    margin-inline-start: 0 !important;
+    margin-inline-end: auto !important;
+    margin-block: 0 !important;
+    border-radius: 0 !important;
+  }
+  #arc-url-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(var(--arc-bar-height) - 2 * var(--arc-url-inset));
+    margin-block: auto;
+    /* side padding = the gap above/below the text */
+    padding-inline: calc((var(--arc-bar-height) - 2 * var(--arc-url-inset) - 1em) / 2);
+    border-radius: 7px;
+    white-space: pre;
+    overflow: hidden;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: var(--arc-url-max-width);
+    font-weight: 500;
+    color: inherit;
+    cursor: default;
+    -moz-window-dragging: no-drag;
+    transition: background-color .15s ease;
+    &:hover {
+      background-color: var(--arc-url-hover-bg);
+    }
+    /* When space runs out (like Arc): the path goes first, then the domain
+       is cut from the left, e.g. "…r.google.com" */
+    & .arc-host,
+    & .arc-path {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: pre;
+    }
+    & .arc-host {
+      flex: 0 1 auto;
+      direction: rtl;          /* ellipsis on the left, keeps the end of the domain */
+    }
+    & .arc-path {
+      flex: 0 10000 auto;      /* shrinks long before the domain does */
+      opacity: .55;
+    }
+    &[empty] {
+      opacity: .6;
+    }
+  }
+}
+@media not -moz-pref("zen.urlbar.behavior", "float") {
+  #arc-url-pill {
+    display: none !important;
+  }
+}
+
+/* ---------- Essentials tiles, Arc-style ----------
+   Light frosted tiles; the selected one gets a brighter fill and a light
+   outline instead of Zen's blurred-favicon background. */
+.tabbrowser-tab[zen-essential="true"] {
+  &:not([visuallyselected], [multiselected="true"]) .tab-background {
+    background: var(--arc-tile-bg) !important;
+    transition: background-color .12s ease;
+  }
+  &:not([visuallyselected]):hover .tab-background {
+    background: var(--arc-tile-hover-bg) !important;
+  }
+  &[visuallyselected] > .tab-stack > .tab-background {
+    background: var(--arc-tile-selected-bg) !important;
+    box-shadow:
+      inset 0 0 0 1.5px var(--arc-tile-selected-border),
+      0 2px 8px rgba(0, 0, 0, .15) !important;
+    &::before,
+    &::after {
+      display: none !important;   /* Zen's blurred favicon + tinted layer */
+    }
+  }
+}

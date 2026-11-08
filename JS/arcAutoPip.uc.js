@@ -1,0 +1,139 @@
+// ==UserScript==
+// @name           Arc auto Picture-in-Picture (front-app based)
+// @description    Like Arc: when another *app* comes to the front (app switch, or a
+//                 desktop/Space switch) while a video plays, pop it into PiP; close it
+//                 when you come back. Spotlight, screenshots, Control Center and
+//                 notifications are background helpers that never become the front
+//                 app, so they don't trigger it. macOS only. Pref: arc-toolbar.pip-on-blur
+// ==/UserScript==
+
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+(function () {
+  if (window.__arcAutoPip) return;
+  window.__arcAutoPip = true;
+  if (AppConstants.platform !== "macosx") return;
+  if (!Services.prefs.getBoolPref("arc-toolbar.pip-on-blur", true)) return;
+
+  const DEBUG = Services.prefs.getBoolPref("arc-toolbar.pip-debug", false);
+  const LOG = PathUtils.join(PathUtils.profileDir, "almost-arc-pip-debug.log");
+  const log = msg => {
+    if (!DEBUG) return;
+    IOUtils.writeUTF8(LOG, `${new Date().toISOString().slice(11, 23)}  [autoPip] ${msg}\n`, { mode: "appendOrCreate" }).catch(() => {});
+  };
+
+  const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+  let PiP = null;
+  try {
+    ({ PictureInPicture: PiP } = ChromeUtils.importESModule(
+      "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs"));
+  } catch (e) {}
+
+  const PIP_URL = "chrome://global/content/pictureinpicture/player.xhtml";
+  const MY_PID = Services.appinfo.processID;
+  const RETRY_MS = 40;            // second look if macOS hadn't switched the front app yet
+  let token = 0;
+  // What this script opened, so it can close exactly that on return
+  let ours = null;   // { browser, before: Set<pipWindow> }
+
+  const pipWindows = () => {
+    const list = [];
+    for (const w of Services.wm.getEnumerator(null)) if (w.document?.documentURI === PIP_URL) list.push(w);
+    return list;
+  };
+
+  // Ask macOS which app is in front (built-in `lsappinfo`, no permissions needed).
+  // Fast path: one `lsappinfo front` call, compared with Zen's own app id (cached).
+  const LSAPPINFO = "/usr/bin/lsappinfo";
+  async function run(args) {
+    const proc = await Subprocess.call({ command: LSAPPINFO, arguments: args });
+    let out = "", chunk;
+    while ((chunk = await proc.stdout.readString())) out += chunk;
+    await proc.wait();
+    return out.trim();
+  }
+  let myASN = null;
+  run(["find", `pid=${MY_PID}`]).then(a => { myASN = a.match(/ASN:[^\s]+/)?.[0] || null; log(`my ASN: ${myASN}`); })
+    .catch(e => log(`lsappinfo find failed: ${e}`));
+
+  async function frontIsZen() {
+    const front = (await run(["front"])).match(/ASN:[^\s]+/)?.[0];
+    if (myASN && front) return { zen: front === myASN, front };
+    // Fallback (ASN unknown): look up the front app's pid
+    const info = await run(["info", "-only", "pid", front || "front"]);
+    const pid = Number(info.match(/"pid"\s*=\s*(\d+)/)?.[1] ?? NaN);
+    return { zen: pid === MY_PID, front: `${front} pid=${pid}` };
+  }
+
+  function canPip() {
+    const browser = gBrowser.selectedBrowser;
+    const tab = gBrowser.selectedTab;
+    if (!browser || browser.audioMuted) return "muted/no browser";
+    if (!tab.hasAttribute("soundplaying")) return "no sound playing";
+    if (tab.hasAttribute("pictureinpicture")) return "already in PiP";
+    if (PiP?.weakAutoPipBrowserToParent?.has(browser)) return "already auto-PiP'd";
+    if (document.fullscreenElement) return "video fullscreen";
+    // Minimized / fully covered: Firefox's own auto-PiP handles it — don't double-toggle
+    if (window.windowState === window.STATE_MINIMIZED || window.isFullyOccluded) return "hidden (Firefox handles it)";
+    return null;
+  }
+
+  async function onDeactivate() {
+    const my = ++token;
+
+    // Focus moved to another Zen window or the PiP player: still Zen, do nothing
+    const active = Services.focus.activeWindow;
+    if (active && active !== window) { log(`skip: focus still in Zen (${active.document?.documentURI === PIP_URL ? "PiP window" : "Zen window"})`); return; }
+
+    const skip = canPip();
+    if (skip) { log(`skip: ${skip}`); return; }
+
+    let r;
+    try {
+      r = await frontIsZen();
+      // macOS may not have updated the front app yet — check once more shortly
+      if (r.zen) {
+        await new Promise(res => setTimeout(res, RETRY_MS));
+        if (my !== token) return;
+        r = await frontIsZen();
+      }
+    } catch (e) { log(`lsappinfo failed: ${e}`); return; }
+    if (my !== token) return;
+    log(`front app: ${r.front}`);
+
+    if (r.zen) { log("skip: Zen is still the front app (Spotlight/Control Center/screenshot/etc.)"); return; }
+
+    const again = canPip();
+    if (again) { log(`skip: ${again}`); return; }
+    ours = { browser: gBrowser.selectedBrowser, before: new Set(pipWindows()) };
+    try {
+      gBrowser.selectedBrowser.browsingContext.currentWindowGlobal
+        .getActor("PictureInPictureLauncher")
+        .sendAsyncMessage("PictureInPicture:AutoToggle");
+      log(`PiP requested (front app: ${r.front})`);
+    } catch (e) { log(`PiP request failed: ${e}`); }
+  }
+
+  function onActivate() {
+    token++;
+    if (!ours) return;
+    const { browser, before } = ours;
+    ours = null;
+    let closed = 0;
+    for (const w of pipWindows()) {
+      // the player we opened: belongs to that tab's video, and wasn't there before
+      const owner = PiP?.weakWinToBrowser?.get(w);
+      if ((owner ? owner === browser : true) && !before.has(w)) {
+        w.close();
+        closed++;
+      }
+    }
+    log(closed ? `back in Zen: closed ${closed} auto-PiP window(s)` : "back in Zen: no auto-PiP window to close");
+  }
+
+  window.addEventListener("deactivate", onDeactivate);
+  window.addEventListener("activate", onActivate);
+  log(`loaded (pid ${MY_PID})`);
+})();

@@ -1,0 +1,59 @@
+{
+  "name": "Almost Arc",
+  "description": "Arc's look and feel for Zen: toolbar as the top of the page card, colored to match the page; centered URL pill; Arc-style tiles and pop-out sidebar; Arc-style auto Picture-in-Picture; and Cmd+Z to undo tab changes.",
+  "author": "shree-venkatesh",
+  "version": "1.0.0",
+  "tags": [
+    "arc",
+    "toolbar",
+    "urlbar",
+    "compact mode",
+    "picture-in-picture",
+    "layout"
+  ],
+  "style": {
+    "chrome": "chrome.css"
+  },
+  "preferences": "preferences.json",
+  "readme": "README.md",
+  "scripts": {
+    "JS": {
+      "arcToolbarTint.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcUrlbarButtons.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcUrlbarFit.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcCompactSidebar.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcDomainOnly.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcAutoPip.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcTabUndo.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      }
+    }
+  },
+  "homepage": "https://github.com/shree-venkatesh/Almost-Arc"
+}

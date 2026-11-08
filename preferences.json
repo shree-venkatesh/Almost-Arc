@@ -1,0 +1,86 @@
+[
+  {
+    "type": "separator",
+    "label": "Almost Arc"
+  },
+  {
+    "property": "arc-toolbar.domain-only",
+    "label": "Show only the domain in the URL bar while not typing (restart Zen)",
+    "type": "checkbox",
+    "defaultValue": false
+  },
+  {
+    "property": "arc-toolbar.tab-undo",
+    "label": "Cmd+Z undoes your tab changes from this session (close, move, pin/unpin), like Arc (restart Zen)",
+    "type": "checkbox",
+    "defaultValue": true
+  },
+  {
+    "type": "separator",
+    "label": "Recommended Zen / Firefox settings"
+  },
+  {
+    "property": "zen.view.use-single-toolbar",
+    "label": "Single toolbar \u2014 turn **OFF** for the Arc layout",
+    "type": "checkbox"
+  },
+  {
+    "property": "zen.view.compact.hide-toolbar",
+    "label": "Hide toolbar in compact mode \u2014 turn **OFF** so the toolbar stays like Arc",
+    "type": "checkbox"
+  },
+  {
+    "property": "zen.urlbar.behavior",
+    "label": "Address bar opens as a floating popup \u2014 choose **Always** for Arc's command bar",
+    "type": "dropdown",
+    "options": [
+      {
+        "label": "Always (Arc)",
+        "value": "float"
+      },
+      {
+        "label": "Only when typing (Zen default)",
+        "value": "floating-on-type"
+      },
+      {
+        "label": "Never",
+        "value": "normal"
+      }
+    ]
+  },
+  {
+    "property": "browser.urlbar.trimURLs",
+    "label": "Trim URLs \u2014 turn **ON**",
+    "type": "checkbox"
+  },
+  {
+    "property": "browser.urlbar.trimHttps",
+    "label": "Hide https:// \u2014 turn **ON**",
+    "type": "checkbox"
+  },
+  {
+    "property": "browser.urlbar.formatting.enabled",
+    "label": "Dim the URL path, keep the domain bright \u2014 turn **ON**",
+    "type": "checkbox"
+  },
+  {
+    "type": "separator",
+    "label": "Arc-style auto Picture-in-Picture"
+  },
+  {
+    "property": "media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled",
+    "label": "Auto PiP when switching tabs",
+    "type": "checkbox"
+  },
+  {
+    "property": "media.videocontrols.picture-in-picture.enable-when-occluded.enabled",
+    "label": "Auto PiP when the window is minimized or fully covered (Firefox 159+)",
+    "type": "checkbox"
+  },
+  {
+    "property": "arc-toolbar.pip-on-blur",
+    "label": "Arc-style auto PiP when you switch to another app or desktop \u2014 macOS (restart Zen)",
+    "type": "checkbox",
+    "defaultValue": true
+  }
+]
