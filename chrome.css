@@ -217,11 +217,11 @@
 }
 
 /* Toolbar sidebar button (added by arcCompactSidebar.uc.js); only in hidden-sidebar mode */
-#arc-toolbar-sidebar-toggle {
+#almost-arc-sidebar-toggle {
   list-style-image: url("chrome://browser/skin/zen-icons/sidebar.svg");
 }
-:root:not([arc-compact-sidebar="true"]) #arc-toolbar-sidebar-toggle,
-:root:not([zen-compact-mode="true"]) #arc-toolbar-sidebar-toggle {
+:root:not([arc-compact-sidebar="true"]) #almost-arc-sidebar-toggle,
+:root:not([zen-compact-mode="true"]) #almost-arc-sidebar-toggle {
   display: none;
 }
 

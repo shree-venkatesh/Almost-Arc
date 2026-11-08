@@ -9,7 +9,7 @@
 //                   3. a single undo that would touch more than a few tabs is refused
 //                   4. the session file is backed up before every undo
 //                 Only this session's actions; a reopened tab must match the one you closed.
-//                 Pref: arc-toolbar.tab-undo (default true)
+//                 Pref: almost-arc.tab-undo (default true)
 // ==/UserScript==
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -19,7 +19,7 @@
 (function () {
   if (window.__arcTabUndo) return;
   window.__arcTabUndo = true;
-  if (!Services.prefs.getBoolPref("arc-toolbar.tab-undo", true)) return;
+  if (!Services.prefs.getBoolPref("almost-arc.tab-undo", true)) return;
 
   const { SessionStore } = ChromeUtils.importESModule("moz-src:///browser/components/sessionstore/SessionStore.sys.mjs");
 
@@ -76,8 +76,8 @@
     return tab?.linkedBrowser?.currentURI?.spec || "";
   }
 
-  // Optional debug log (pref arc-toolbar.undo-debug) -> <profile>/almost-arc-undo-debug.log
-  const DEBUG = Services.prefs.getBoolPref("arc-toolbar.undo-debug", false);
+  // Optional debug log (pref almost-arc.undo-debug) -> <profile>/almost-arc-undo-debug.log
+  const DEBUG = Services.prefs.getBoolPref("almost-arc.undo-debug", false);
   const LOG = PathUtils.join(PathUtils.profileDir, "almost-arc-undo-debug.log");
   const log = msg => DEBUG && IOUtils.writeUTF8(LOG, `${new Date().toISOString().slice(11, 23)}  ${msg}\n`, { mode: "appendOrCreate" }).catch(() => {});
 

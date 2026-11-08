@@ -43,9 +43,9 @@
   // Arc also keeps a sidebar button at the start of the toolbar.
   function ensureToolbarToggle() {
     const navBar = document.getElementById("nav-bar");
-    if (!navBar || document.getElementById("arc-toolbar-sidebar-toggle")) return;
+    if (!navBar || document.getElementById("almost-arc-sidebar-toggle")) return;
     const btn = document.createXULElement("toolbarbutton");
-    btn.id = "arc-toolbar-sidebar-toggle";
+    btn.id = "almost-arc-sidebar-toggle";
     btn.className = "toolbarbutton-1 chromeclass-toolbar-additional";
     btn.setAttribute("command", "cmd_toggleCompactModeIgnoreHover");
     btn.setAttribute("tooltiptext", "Toggle sidebar");

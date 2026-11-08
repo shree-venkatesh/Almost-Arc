@@ -4,7 +4,7 @@
 //                 desktop/Space switch) while a video plays, pop it into PiP; close it
 //                 when you come back. Spotlight, screenshots, Control Center and
 //                 notifications are background helpers that never become the front
-//                 app, so they don't trigger it. macOS only. Pref: arc-toolbar.pip-on-blur
+//                 app, so they don't trigger it. macOS only. Pref: almost-arc.pip-on-blur
 // ==/UserScript==
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -15,9 +15,9 @@
   if (window.__arcAutoPip) return;
   window.__arcAutoPip = true;
   if (AppConstants.platform !== "macosx") return;
-  if (!Services.prefs.getBoolPref("arc-toolbar.pip-on-blur", true)) return;
+  if (!Services.prefs.getBoolPref("almost-arc.pip-on-blur", true)) return;
 
-  const DEBUG = Services.prefs.getBoolPref("arc-toolbar.pip-debug", false);
+  const DEBUG = Services.prefs.getBoolPref("almost-arc.pip-debug", false);
   const LOG = PathUtils.join(PathUtils.profileDir, "almost-arc-pip-debug.log");
   const log = msg => {
     if (!DEBUG) return;
@@ -58,13 +58,38 @@
   run(["find", `pid=${MY_PID}`]).then(a => { myASN = a.match(/ASN:[^\s]+/)?.[0] || null; log(`my ASN: ${myASN}`); })
     .catch(e => log(`lsappinfo find failed: ${e}`));
 
-  async function frontIsZen() {
+  // macOS system UI that can briefly take the front without being a "real" app switch
+  const IGNORE_BUNDLES = new Set([
+    "com.apple.controlcenter",
+    "com.apple.notificationcenterui",
+    "com.apple.Spotlight",
+    "com.apple.screencaptureui",
+    "com.apple.screenshot.launcher",
+    "com.apple.systemuiserver",
+    "com.apple.dock",                  // Mission Control, Launchpad, app switcher UI
+    "com.apple.WindowManager",         // Stage Manager
+    "com.apple.loginwindow",
+    "com.apple.SecurityAgent",
+    "com.apple.UserNotificationCenter",
+    "com.apple.TextInputMenuAgent",
+    "com.apple.TextInputSwitcher",
+    "com.apple.CharacterPaletteIM",    // emoji picker
+    "com.apple.PIPAgent",
+  ]);
+
+  // Returns { zen: bool, real: bool, front: string }.
+  //   zen  - Zen is still the front app
+  //   real - the front app is a normal app (not a background helper / system UI)
+  async function frontInfo() {
     const front = (await run(["front"])).match(/ASN:[^\s]+/)?.[0];
-    if (myASN && front) return { zen: front === myASN, front };
-    // Fallback (ASN unknown): look up the front app's pid
-    const info = await run(["info", "-only", "pid", front || "front"]);
+    if (myASN && front && front === myASN) return { zen: true, real: false, front };
+    const info = await run(["info", "-only", "pid", "-only", "ApplicationType", "-only", "bundleid", front || "front"]);
     const pid = Number(info.match(/"pid"\s*=\s*(\d+)/)?.[1] ?? NaN);
-    return { zen: pid === MY_PID, front: `${front} pid=${pid}` };
+    const type = info.match(/"ApplicationType"\s*=\s*"([^"]+)"/)?.[1] ?? "";
+    const bundle = info.match(/"CFBundleIdentifier"\s*=\s*"([^"]+)"/)?.[1] ?? "";
+    const zen = pid === MY_PID;
+    const real = !zen && type === "Foreground" && !IGNORE_BUNDLES.has(bundle);
+    return { zen, real, front: `${bundle || front} (${type || "?"})` };
   }
 
   function canPip() {
@@ -92,18 +117,19 @@
 
     let r;
     try {
-      r = await frontIsZen();
+      r = await frontInfo();
       // macOS may not have updated the front app yet — check once more shortly
       if (r.zen) {
         await new Promise(res => setTimeout(res, RETRY_MS));
         if (my !== token) return;
-        r = await frontIsZen();
+        r = await frontInfo();
       }
     } catch (e) { log(`lsappinfo failed: ${e}`); return; }
     if (my !== token) return;
     log(`front app: ${r.front}`);
 
-    if (r.zen) { log("skip: Zen is still the front app (Spotlight/Control Center/screenshot/etc.)"); return; }
+    if (r.zen) { log("skip: Zen is still the front app"); return; }
+    if (!r.real) { log("skip: front app is system UI / a background helper"); return; }
 
     const again = canPip();
     if (again) { log(`skip: ${again}`); return; }

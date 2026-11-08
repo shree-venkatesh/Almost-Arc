@@ -15,7 +15,7 @@ CHROME="$ZEN_PROFILE/chrome"
 for f in arcToolbarTint arcUrlbarButtons arcUrlbarFit arcCompactSidebar arcDomainOnly arcAutoPip arcTabUndo zzArcDebug zzPipDebug; do
   rm -f "$CHROME/JS/$f.uc.js"
 done
-rm -f "$CHROME/arc-toolbar.css" "$CHROME/almost-arc.css"
-[ -f "$CHROME/userChrome.css" ] && sed -i.bak -e '/arc-toolbar.css/d' -e '/almost-arc.css/d' "$CHROME/userChrome.css"
-[ -f "$ZEN_PROFILE/user.js" ] && sed -i.bak -e '/\/\/ >>> arc-toolbar/,/\/\/ <<< arc-toolbar/d' -e '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$ZEN_PROFILE/user.js"
+rm -f "$CHROME/almost-arc.css"
+[ -f "$CHROME/userChrome.css" ] && sed -i.bak '/almost-arc.css/d' "$CHROME/userChrome.css"
+[ -f "$ZEN_PROFILE/user.js" ] && sed -i.bak '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$ZEN_PROFILE/user.js"
 echo "Removed. Restart Zen. Prefs it changed keep their current values; reset them in about:config if you want."

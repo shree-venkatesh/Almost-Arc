@@ -11,8 +11,8 @@
 
 (function () {
   // Off by default (Arc shows the full URL). Toggle in the mod settings or set
-  // arc-toolbar.domain-only = true in about:config.
-  const ENABLED = Services.prefs.getBoolPref("arc-toolbar.domain-only", false);
+  // almost-arc.domain-only = true in about:config.
+  const ENABLED = Services.prefs.getBoolPref("almost-arc.domain-only", false);
 
   if (!ENABLED || window.__arcDomainOnly) return;
   window.__arcDomainOnly = true;

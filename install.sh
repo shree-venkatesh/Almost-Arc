@@ -52,8 +52,6 @@ fi
 # ---- 2. styles -----------------------------------------------------------
 cp "$HERE/chrome.css" "$CHROME/almost-arc.css"
 touch "$CHROME/userChrome.css"
-# migrate from the pre-release name
-sed -i.bak '/arc-toolbar.css/d' "$CHROME/userChrome.css"; rm -f "$CHROME/arc-toolbar.css"
 if ! grep -q 'almost-arc.css' "$CHROME/userChrome.css"; then
   { echo '@import url("almost-arc.css");'; cat "$CHROME/userChrome.css"; } > "$CHROME/userChrome.css.tmp"
   mv "$CHROME/userChrome.css.tmp" "$CHROME/userChrome.css"
@@ -67,7 +65,7 @@ cp "$HERE"/JS/*.uc.js "$CHROME/JS/"
 # ---- 4. prefs (user.js, managed block) ----------------------------------
 USERJS="$ZEN_PROFILE/user.js"
 touch "$USERJS"
-sed -i.bak -e '/\/\/ >>> arc-toolbar/,/\/\/ <<< arc-toolbar/d' -e '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$USERJS"
+sed -i.bak '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$USERJS"
 cat >> "$USERJS" <<'PREFS'
 // >>> almost-arc (managed by Almost Arc install.sh - edit or remove freely)
 user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
@@ -79,9 +77,9 @@ user_pref("browser.urlbar.trimHttps", true);
 user_pref("browser.urlbar.formatting.enabled", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled", true);
-user_pref("arc-toolbar.pip-on-blur", true);
-user_pref("arc-toolbar.pip-debug", false);
-user_pref("arc-toolbar.undo-debug", false);
+user_pref("almost-arc.pip-on-blur", true);
+user_pref("almost-arc.pip-debug", false);
+user_pref("almost-arc.undo-debug", false);
 // <<< almost-arc
 PREFS
 

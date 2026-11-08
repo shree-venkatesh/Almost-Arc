@@ -58,9 +58,9 @@ To remove: `./uninstall.sh`.
 | `JS/arcUrlbarFit.uc.js` | The centered URL pill: sized to its text, fits narrow windows, opens and closes the floating address bar |
 | `JS/arcUrlbarButtons.uc.js` | Moves the copy-link button next to the pill and site settings / extensions to the right |
 | `JS/arcCompactSidebar.uc.js` | Arc-style pop-out sidebar and toolbar sidebar button in compact mode |
-| `JS/arcAutoPip.uc.js` | Auto PiP when another app or desktop comes to the front (macOS); closes when you return. Pref `arc-toolbar.pip-on-blur` |
-| `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards. Pref `arc-toolbar.tab-undo` |
-| `JS/arcDomainOnly.uc.js` | Optional domain-only URL. Pref `arc-toolbar.domain-only` (off by default) |
+| `JS/arcAutoPip.uc.js` | Auto PiP when another app or desktop comes to the front (macOS); closes when you return. Pref `almost-arc.pip-on-blur` |
+| `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards. Pref `almost-arc.tab-undo` |
+| `JS/arcDomainOnly.uc.js` | Optional domain-only URL. Pref `almost-arc.domain-only` (off by default) |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `vendor/fx-autoconfig/` | Script loader used by `install.sh` |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |

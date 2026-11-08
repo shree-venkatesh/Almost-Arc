@@ -4,13 +4,13 @@
     "label": "Almost Arc"
   },
   {
-    "property": "arc-toolbar.domain-only",
+    "property": "almost-arc.domain-only",
     "label": "Show only the domain in the URL bar while not typing (restart Zen)",
     "type": "checkbox",
     "defaultValue": false
   },
   {
-    "property": "arc-toolbar.tab-undo",
+    "property": "almost-arc.tab-undo",
     "label": "Cmd+Z undoes your tab changes from this session (close, move, pin/unpin), like Arc (restart Zen)",
     "type": "checkbox",
     "defaultValue": true
@@ -78,7 +78,7 @@
     "type": "checkbox"
   },
   {
-    "property": "arc-toolbar.pip-on-blur",
+    "property": "almost-arc.pip-on-blur",
     "label": "Arc-style auto PiP when you switch to another app or desktop \u2014 macOS (restart Zen)",
     "type": "checkbox",
     "defaultValue": true
