@@ -4,7 +4,7 @@ Makes Zen Browser look and feel almost like Arc.
 
 - **Toolbar is the top of the page card.** Rounded top corners, the card's shadow, a full-height sidebar beside it, and square corners in borderless fullscreen.
 - **Toolbar color matches the page.** It's sampled from the page's top edge once each page has loaded. New tabs and other transparent pages get a frosted tint over your space gradient.
-- **Centered URL pill** sized to its text: the domain is bright and the path dimmed, with a highlight on hover. Clicking it opens Zen's floating address bar, like Arc's command bar, and clicking again closes it. The pill itself never moves. In a narrow window it drops the path first, then trims the domain from the left (`…r.google.com`).
+- **Centered URL pill** sized to its text: the domain is bright and the path dimmed, with a highlight on hover. Clicking it opens Zen's floating address bar, like Arc's command bar, and clicking again closes it. The pill itself never moves. In a narrow window it drops the path first, then trims the domain, always with the `…` on the right (`docs.goog…`).
 - **Copy-link button** sits right next to the pill. **Site settings / extensions** moves to the right side of the toolbar.
 - **Arc-style essentials tiles:** light, frosted tiles, and an outlined tile for the selected one.
 - **Hidden-sidebar (compact) mode works like Arc.** The pop-out sidebar runs full height with the window buttons at its top, and a sidebar button starts the toolbar.

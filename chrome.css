@@ -359,8 +359,8 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     &:hover {
       background-color: var(--arc-url-hover-bg);
     }
-    /* When space runs out (like Arc): the path goes first, then the domain
-       is cut from the left, e.g. "…r.google.com" */
+    /* When space runs out: the path goes first, then the domain. The "…"
+       is always on the right, e.g. "google.com/sea…", "docs.goog…" */
     & .arc-host,
     & .arc-path {
       min-width: 0;
@@ -370,7 +370,6 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     }
     & .arc-host {
       flex: 0 1 auto;
-      direction: rtl;          /* ellipsis on the left, keeps the end of the domain */
     }
     & .arc-path {
       flex: 0 10000 auto;      /* shrinks long before the domain does */
