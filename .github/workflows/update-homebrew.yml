@@ -4,8 +4,9 @@
 #
 # Points the Homebrew formula (shree-venkatesh/homebrew-tap,
 # Formula/almost-arc.rb) at a newly published release.
-# Runs only for published, non-prerelease Releases (not for bare tags),
-# or manually from the Actions tab with a tag name.
+# Runs when a full (non-prerelease) Release is published or a pre-release is
+# promoted to a full Release ("released"); never for pre-releases or bare
+# tags. Can also be run manually from the Actions tab with a tag name.
 # Needs the secret HOMEBREW_TAP_TOKEN: a fine-grained token with
 # Contents: read & write on shree-venkatesh/homebrew-tap only.
 
@@ -13,7 +14,7 @@ name: Update Homebrew formula
 
 on:
   release:
-    types: [published]
+    types: [released]
   workflow_dispatch:
     inputs:
       tag:

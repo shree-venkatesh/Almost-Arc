@@ -69,27 +69,32 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
 ## Releasing
 
-Every version gets a **tag**; only some get a GitHub **Release**. Small fixes are
-tag-only. Publish a Release only when the owner explicitly asks for one.
+Every version is a tag. Small fixes are published as GitHub **pre-releases**
+(betas); a full **Release** happens only when the owner explicitly asks for one.
 
-| | Tag only | Release |
+| | Pre-release | Release |
 | --- | --- | --- |
 | Sine, `git pull` users | get it | get it |
-| `almost-arc install --beta` / `update --beta` (latest tag) | get it | get it |
+| `almost-arc install --beta` / `update --beta` (newest tag) | get it | get it |
 | Homebrew, curl (`almost-arc update`) | no | get it |
 
-Tag only:
+Pre-release (the default):
 
 1. Bump `version` in `theme.json`.
 2. Update `README.md` (features, settings, limitations) if behavior changed.
 3. Commit, push to `main`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. `gh release create vX.Y.Z --verify-tag --prerelease --latest=false --title "Almost Arc X.Y.Z (beta)"`,
+   notes starting "Beta. Install it with `almost-arc update --beta`."
 
-Release, on top of that:
+Full Release, only when asked:
 
-4. `gh release create vX.Y.Z --verify-tag`. The notes cover everything since the
-   last Release, including tag-only versions in between.
-5. Publishing the Release (not a bare tag, not a pre-release) runs
-   `.github/workflows/update-homebrew.yml`, which points `Formula/almost-arc.rb` in
-   `shree-venkatesh/homebrew-tap` at the new tarball. It needs the
-   `HOMEBREW_TAP_TOKEN` secret (fine-grained token, Contents read/write on the tap only).
-   Check the Actions tab; rerun it manually with the tag if it failed.
+- New version: steps 1-3, then `gh release create vX.Y.Z --verify-tag`. The notes
+  cover everything since the last full Release, including the betas in between.
+- Promoting an existing beta: `gh release edit vX.Y.Z --prerelease=false --latest`
+  (and retitle / rewrite the notes).
+
+Either way `.github/workflows/update-homebrew.yml` runs (event `release: released`;
+pre-releases never trigger it) and points `Formula/almost-arc.rb` in
+`shree-venkatesh/homebrew-tap` at the new tarball. It needs the
+`HOMEBREW_TAP_TOKEN` secret (fine-grained token, Contents read/write on the tap
+only). Check the Actions tab; rerun it manually with the tag if it failed.
