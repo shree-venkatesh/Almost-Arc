@@ -25,7 +25,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `install.sh` / `uninstall.sh` | Non-Sine install: fx-autoconfig loader, CSS import, scripts, `user.js` block |
 | `vendor/fx-autoconfig/` | Vendored script loader (its own license) |
 | `site/` | almostarc.net: one self-contained `index.html` (currently a placeholder; the owner is designing the real page themselves). Analytics: GoatCounter (`shree-venkatesh.goatcounter.com`, no cookies) |
-| `site/install.sh` | The `curl -fsSL https://almostarc.net/install.sh \| bash` installer for people without Homebrew: downloads the latest release to `~/.almost-arc`, symlinks an `almost-arc` command (install / update / uninstall / --version) into `/usr/local/bin`, runs the release's `install.sh`. Refuses (points to brew) when Homebrew is present, unless a curl install already exists. Everything runs inside `main()` so a truncated download can't run partway |
+| `site/install.sh` | The `curl -fsSL https://almostarc.net/install.sh \| bash` installer for people without Homebrew: downloads the latest release to `~/.almost-arc`, symlinks an `almost-arc` command (install / update / uninstall / --version) into `/usr/local/bin`, runs the release's `install.sh`. Refuses only when Almost Arc is already installed with Homebrew (the formula's `almost-arc` likewise refuses when `~/.almost-arc` exists). Everything runs inside `main()` so a truncated download can't run partway |
 | `.github/workflows/pages.yml` | Deploys `site/` to GitHub Pages on pushes to `main` that touch it |
 | `.github/workflows/update-homebrew.yml` | On a published Release, updates the formula in `shree-venkatesh/homebrew-tap` |
 

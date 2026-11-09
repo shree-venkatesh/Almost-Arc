@@ -40,7 +40,7 @@ Quit Zen before running `almost-arc install`. It runs the same `install.sh` desc
 curl -fsSL https://almostarc.net/install.sh | bash
 ```
 
-Quit Zen first. This downloads the latest release into `~/.almost-arc`, adds the same `almost-arc` command to `/usr/local/bin` (it may ask for your password), and installs. If you already have Homebrew, it tells you to use the Homebrew install instead, so there's only ever one `almost-arc` command.
+Quit Zen first. This downloads the latest release into `~/.almost-arc`, adds the same `almost-arc` command to `/usr/local/bin` (it may ask for your password), and installs. Don't mix the two installs: the curl installer stops if Almost Arc is already installed with Homebrew, and the Homebrew `almost-arc` stops if it was installed with curl.
 
 - **After a Zen update:** `almost-arc install`.
 - **Update Almost Arc:** `almost-arc update`.

@@ -29,28 +29,21 @@ main() {
   command -v curl >/dev/null || fail "curl is needed."
   command -v tar  >/dev/null || fail "tar is needed."
 
-  # ---- Homebrew users: use brew, so there is only ever one `almost-arc` ----
+  # ---- already installed with Homebrew? Then there would be two `almost-arc` ----
   local brew=""
   if command -v brew >/dev/null 2>&1; then brew="$(command -v brew)"
   elif [ -x /opt/homebrew/bin/brew ]; then brew=/opt/homebrew/bin/brew
   elif [ -x /usr/local/bin/brew ]; then brew=/usr/local/bin/brew
   fi
-  if [ -n "$brew" ]; then
-    if [ -e "$("$brew" --prefix)/opt/almost-arc" ]; then
-      say "Almost Arc is already installed with Homebrew. To update it, quit Zen and run:"
-      say ""
-      say "  brew update && brew upgrade almost-arc && almost-arc install"
-      exit 1
-    fi
-    # An existing curl install is just being updated; anything else goes to brew.
-    if [ ! -d "$ROOT" ] && [ "${ALMOST_ARC_IGNORE_BREW:-}" != "1" ]; then
-      say "You have Homebrew, so install Almost Arc with it instead:"
-      say ""
-      say "  brew install shree-venkatesh/tap/almost-arc && almost-arc install"
-      say ""
-      say "(Quit Zen before the second command.)"
-      exit 1
-    fi
+  if [ -n "$brew" ] && [ -e "$("$brew" --prefix)/opt/almost-arc" ]; then
+    say "Almost Arc is already installed with Homebrew. Either keep using that:"
+    say ""
+    say "  brew update && brew upgrade almost-arc && almost-arc install"
+    say ""
+    say "or remove it first, then rerun this installer:"
+    say ""
+    say "  brew uninstall almost-arc"
+    exit 1
   fi
 
   # ---- find the latest release ---------------------------------------------
