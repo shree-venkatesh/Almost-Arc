@@ -28,6 +28,12 @@ if pgrep -xi zen >/dev/null 2>&1; then
   echo "Please quit Zen first (Cmd+Q / close all windows), then rerun."; exit 1
 fi
 
+if [ "$(id -u)" -eq 0 ]; then
+  echo "Don't run this with sudo: it would leave files in your Zen profile owned by root."
+  echo "Run it as yourself; it asks for your password itself when it needs it."
+  exit 1
+fi
+
 echo "Profile: $ZEN_PROFILE"
 echo "Zen app: $ZEN_APP"
 CHROME="$ZEN_PROFILE/chrome"
@@ -37,9 +43,33 @@ mkdir -p "$CHROME/JS"
 SUDO=""; [ -w "$ZEN_APP" ] || SUDO="sudo"
 if [ ! -f "$ZEN_APP/config.js" ]; then
   echo "Installing script loader into Zen (may ask for your password)..."
-  $SUDO cp "$HERE/vendor/fx-autoconfig/program/config.js" "$ZEN_APP/"
-  $SUDO mkdir -p "$ZEN_APP/defaults/pref"
-  $SUDO cp "$HERE/vendor/fx-autoconfig/program/defaults/pref/config-prefs.js" "$ZEN_APP/defaults/pref/"
+  if ! ERR="$( { $SUDO cp "$HERE/vendor/fx-autoconfig/program/config.js" "$ZEN_APP/" &&
+                 $SUDO mkdir -p "$ZEN_APP/defaults/pref" &&
+                 $SUDO cp "$HERE/vendor/fx-autoconfig/program/defaults/pref/config-prefs.js" "$ZEN_APP/defaults/pref/"
+               } 2>&1 )"; then
+    [ -n "$ERR" ] && echo "$ERR"
+    if [ "$(uname)" = Darwin ] && printf '%s' "$ERR" | grep -q "Operation not permitted"; then
+      # macOS 13+ "App Management": apps may only modify other apps when allowed; sudo can't bypass it
+      case "${TERM_PROGRAM:-}" in
+        Apple_Terminal) TERM_APP="Terminal" ;;
+        iTerm.app)      TERM_APP="iTerm" ;;
+        vscode)         TERM_APP="Visual Studio Code (or Cursor)" ;;
+        WarpTerminal)   TERM_APP="Warp" ;;
+        ghostty)        TERM_APP="Ghostty" ;;
+        "")             TERM_APP="your terminal app" ;;
+        *)              TERM_APP="$TERM_PROGRAM" ;;
+      esac
+      echo
+      echo "macOS blocked changes to Zen.app. Your terminal needs permission to modify apps:"
+      echo
+      echo "  1. System Settings > Privacy & Security > App Management: turn on $TERM_APP"
+      echo "  2. Quit $TERM_APP completely (Cmd+Q) and reopen it"
+      echo "  3. Quit Zen and run this again (no sudo needed)"
+      echo
+      open "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles" 2>/dev/null || true
+    fi
+    exit 1
+  fi
 else
   echo "Script loader already present in Zen (config.js) - leaving it."
 fi
