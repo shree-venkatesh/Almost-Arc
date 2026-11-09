@@ -4,7 +4,7 @@ Almost Arc makes Zen Browser look and behave like Arc. It ships as a Sine mod
 (`theme.json`) and can also be installed without Sine via `./install.sh`, or via
 Homebrew (`brew install shree-venkatesh/tap/almost-arc`, formula in the
 `shree-venkatesh/homebrew-tap` repo; it wraps `install.sh` / `uninstall.sh` as
-`almost-arc install|uninstall`).
+`almost-arc install|update|uninstall`).
 License: MPL-2.0. Author: shree-venkatesh. Target: Zen 1.24.x (Firefox 159) on
 macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 

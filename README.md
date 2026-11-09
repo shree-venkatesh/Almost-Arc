@@ -33,7 +33,7 @@ almost-arc install
 
 Quit Zen before running `almost-arc install`. It runs the same `install.sh` described below, so the same steps apply: clear the startup cache afterwards, and rerun `almost-arc install` after every Zen update.
 
-- **Update:** `brew upgrade almost-arc`, then `almost-arc install`.
+- **Update:** quit Zen, then `almost-arc update` (runs `brew update`, `brew upgrade almost-arc` and `almost-arc install`).
 - **Remove:** `almost-arc uninstall`, then `brew uninstall almost-arc`.
 
 ## Install without Homebrew (macOS)

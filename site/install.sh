@@ -78,7 +78,7 @@ main() {
   local ROOT="\$HOME/.almost-arc"
   case "\${1:-}" in
     install)   shift; exec "\$ROOT/app/install.sh" "\$@" ;;
-    update)    curl -fsSL "$SITE/install.sh" | bash ;;
+    update|upgrade) curl -fsSL "$SITE/install.sh" | bash ;;
     uninstall)
       shift
       "\$ROOT/app/uninstall.sh" "\$@"
