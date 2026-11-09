@@ -5,6 +5,7 @@
 #
 # Almost Arc installer for people without Homebrew:
 #   curl -fsSL https://almostarc.net/install.sh | bash
+#   curl -fsSL https://almostarc.net/install.sh | bash -s -- --beta   (latest tag)
 #
 # Downloads the latest release into ~/.almost-arc, adds an `almost-arc`
 # command (install / update / uninstall / --version) to /usr/local/bin,
@@ -22,6 +23,14 @@ main() {
   local BIN_DIR="${ALMOST_ARC_BIN_DIR:-/usr/local/bin}"
   local LINK="$BIN_DIR/almost-arc"
   local CMD="$ROOT/bin/almost-arc"
+
+  local beta=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --beta) beta=1 ;;
+      *) printf 'Unknown option: %s\n' "$arg" >&2; exit 1 ;;
+    esac
+  done
 
   say()  { printf '%s\n' "$*"; }
   fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
@@ -46,16 +55,26 @@ main() {
     exit 1
   fi
 
-  # ---- find the latest release ---------------------------------------------
-  local tag
-  tag="$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")" \
-    || fail "couldn't reach GitHub."
-  tag="${tag##*/}"
-  case "$tag" in v[0-9]*) ;; *) fail "couldn't find the latest release." ;; esac
+  # ---- find the latest release (or, with --beta, the latest tag) -----------
+  local tag label=""
+  if [ "$beta" = 1 ]; then
+    # newest vX.Y.Z tag; tags that never became a Release are the beta channel
+    tag="$(curl -fsSL "https://api.github.com/repos/$REPO/tags?per_page=100")" \
+      || fail "couldn't reach GitHub."
+    tag="$(printf '%s\n' "$tag" | grep -o '"name": *"v[0-9]*[.][0-9]*[.][0-9]*"' \
+      | grep -o 'v[0-9.]*' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
+    [ -n "$tag" ] || fail "couldn't find the latest tag."
+    tag="v$tag"; label=" (beta)"
+  else
+    tag="$(curl -fsSLo /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")" \
+      || fail "couldn't reach GitHub."
+    tag="${tag##*/}"
+    case "$tag" in v[0-9]*) ;; *) fail "couldn't find the latest release." ;; esac
+  fi
   local version="${tag#v}"
 
   # ---- download it into ~/.almost-arc/app ----------------------------------
-  say "Downloading Almost Arc $version..."
+  say "Downloading Almost Arc $version$label..."
   mkdir -p "$ROOT/bin"
   local tmp; tmp="$(mktemp -d)"
   # shellcheck disable=SC2064  # expand now: $tmp is local and gone by the time EXIT fires
@@ -67,7 +86,7 @@ main() {
   [ -x "$tmp/app/install.sh" ] || fail "the download doesn't look like an Almost Arc release."
   rm -rf "$ROOT/app"
   mv "$tmp/app" "$ROOT/app"
-  printf '%s\n' "$version" > "$ROOT/VERSION"
+  printf '%s\n' "$version$label" > "$ROOT/VERSION"
 
   # ---- the almost-arc command ----------------------------------------------
   cat > "$CMD" <<EOF
@@ -77,8 +96,15 @@ main() {
   set -euo pipefail
   local ROOT="\$HOME/.almost-arc"
   case "\${1:-}" in
-    install)   shift; exec "\$ROOT/app/install.sh" "\$@" ;;
-    update|upgrade) curl -fsSL "$SITE/install.sh" | bash ;;
+    install)
+      shift
+      if [ "\${1:-}" = --beta ]; then
+        curl -fsSL "$SITE/install.sh" | bash -s -- --beta   # fetch the latest tag first
+      else
+        exec "\$ROOT/app/install.sh" "\$@"
+      fi
+      ;;
+    update|upgrade) shift; curl -fsSL "$SITE/install.sh" | bash -s -- "\$@" ;;
     uninstall)
       shift
       "\$ROOT/app/uninstall.sh" "\$@"
@@ -96,6 +122,9 @@ main() {
       echo "  update      Download the latest Almost Arc and install it (quit Zen first)"
       echo "  uninstall   Remove Almost Arc from Zen, and this command"
       echo "  --version   Print the installed version"
+      echo
+      echo "  --beta      With install or update: use the newest tagged version, which may"
+      echo "              not be a release yet. A plain 'update' goes back to the latest release."
       [ -z "\${1:-}" ] || [ "\$1" = "help" ] || [ "\$1" = "-h" ] || [ "\$1" = "--help" ] || exit 1
       ;;
   esac
@@ -121,6 +150,7 @@ EOF
     say ""
     say "Later: 'almost-arc install' after a Zen update, 'almost-arc update' for a new"
     say "Almost Arc version, 'almost-arc uninstall' to remove it."
+    [ "$beta" = 0 ] || say "You're on the beta. 'almost-arc update' (without --beta) goes back to the latest release."
   else
     say ""
     say "Almost Arc $version is downloaded, but not installed into Zen yet."

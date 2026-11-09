@@ -4,7 +4,7 @@ Almost Arc makes Zen Browser look and behave like Arc. It ships as a Sine mod
 (`theme.json`) and can also be installed without Sine via `./install.sh`, or via
 Homebrew (`brew install shree-venkatesh/tap/almost-arc`, formula in the
 `shree-venkatesh/homebrew-tap` repo; it wraps `install.sh` / `uninstall.sh` as
-`almost-arc install|update|uninstall`).
+`almost-arc install|update|uninstall`, `--beta` for the newest tag).
 License: MPL-2.0. Author: shree-venkatesh. Target: Zen 1.24.x (Firefox 159) on
 macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
@@ -27,7 +27,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `install.sh` / `uninstall.sh` | Non-Sine install: fx-autoconfig loader, CSS import, scripts, `user.js` block |
 | `vendor/fx-autoconfig/` | Vendored script loader (its own license) |
 | `site/` | almostarc.net: one self-contained `index.html` (currently a placeholder; the owner is designing the real page themselves). Analytics: GoatCounter (`shree-venkatesh.goatcounter.com`, no cookies) |
-| `site/install.sh` | The `curl -fsSL https://almostarc.net/install.sh \| bash` installer for people without Homebrew: downloads the latest release to `~/.almost-arc`, symlinks an `almost-arc` command (install / update / uninstall / --version) into `/usr/local/bin`, runs the release's `install.sh`. Refuses only when Almost Arc is already installed with Homebrew (the formula's `almost-arc` likewise refuses when `~/.almost-arc` exists). Everything runs inside `main()` so a truncated download can't run partway |
+| `site/install.sh` | The `curl -fsSL https://almostarc.net/install.sh \| bash` installer for people without Homebrew: downloads the latest release to `~/.almost-arc`, symlinks an `almost-arc` command (install / update / uninstall / --version) into `/usr/local/bin`, runs the release's `install.sh`. `--beta` (`| bash -s -- --beta`, `almost-arc install|update --beta`) uses the newest `vX.Y.Z` tag from the GitHub API instead of the latest Release. Refuses only when Almost Arc is already installed with Homebrew (the formula's `almost-arc` likewise refuses when `~/.almost-arc` exists). Everything runs inside `main()` so a truncated download can't run partway |
 | `.github/workflows/pages.yml` | Deploys `site/` to GitHub Pages on pushes to `main` that touch it |
 | `.github/workflows/update-homebrew.yml` | On a published Release, updates the formula in `shree-venkatesh/homebrew-tap` |
 
@@ -69,10 +69,25 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
 ## Releasing
 
+Every version gets a **tag**; only some get a GitHub **Release**. Small fixes are
+tag-only. Publish a Release only when the owner explicitly asks for one.
+
+| | Tag only | Release |
+| --- | --- | --- |
+| Sine, `git pull` users | get it | get it |
+| `almost-arc install --beta` / `update --beta` (latest tag) | get it | get it |
+| Homebrew, curl (`almost-arc update`) | no | get it |
+
+Tag only:
+
 1. Bump `version` in `theme.json`.
 2. Update `README.md` (features, settings, limitations) if behavior changed.
-3. Commit, push to `main`, then `git tag vX.Y.Z && git push --tags`.
-4. Create the GitHub Release for the tag (`gh release create vX.Y.Z --verify-tag`).
+3. Commit, push to `main`, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+Release, on top of that:
+
+4. `gh release create vX.Y.Z --verify-tag`. The notes cover everything since the
+   last Release, including tag-only versions in between.
 5. Publishing the Release (not a bare tag, not a pre-release) runs
    `.github/workflows/update-homebrew.yml`, which points `Formula/almost-arc.rb` in
    `shree-venkatesh/homebrew-tap` at the new tarball. It needs the

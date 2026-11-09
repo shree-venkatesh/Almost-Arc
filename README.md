@@ -35,6 +35,7 @@ Quit Zen before running `almost-arc install`. It runs the same `install.sh` desc
 
 - **Update:** quit Zen, then `almost-arc update` (runs `brew update`, `brew upgrade almost-arc` and `almost-arc install`).
 - **Remove:** `almost-arc uninstall`, then `brew uninstall almost-arc`.
+- **Beta:** `almost-arc update --beta` installs the newest tagged version, which may not be in Homebrew yet. A plain `almost-arc install` goes back to the Homebrew version.
 
 ## Install without Homebrew (macOS)
 
@@ -47,6 +48,7 @@ Quit Zen first. This downloads the latest release into `~/.almost-arc`, adds the
 - **After a Zen update:** `almost-arc install`.
 - **Update Almost Arc:** `almost-arc update`.
 - **Remove:** `almost-arc uninstall` removes the mod, the command and `~/.almost-arc`.
+- **Beta:** `almost-arc update --beta` (or `curl -fsSL https://almostarc.net/install.sh | bash -s -- --beta`) installs the newest tagged version, which may not be a release yet. A plain `almost-arc update` goes back to the latest release.
 
 ## Install without Sine
 
