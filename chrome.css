@@ -338,10 +338,12 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     border-radius: 0 !important;
   }
   #arc-url-pill {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    /* one line of text, so a long URL gets a single "…" at its very end */
+    display: block;
+    text-align: center;
+    text-overflow: ellipsis;
     height: calc(var(--arc-bar-height) - 2 * var(--arc-url-inset));
+    line-height: calc(var(--arc-bar-height) - 2 * var(--arc-url-inset));
     margin-block: auto;
     /* side padding = the gap above/below the text */
     padding-inline: calc((var(--arc-bar-height) - 2 * var(--arc-url-inset) - 1em) / 2);
@@ -359,20 +361,9 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     &:hover {
       background-color: var(--arc-url-hover-bg);
     }
-    /* When space runs out: the path goes first, then the domain. The "…"
-       is always on the right, e.g. "google.com/sea…", "docs.goog…" */
-    & .arc-host,
+    /* When space runs out the URL is cut at its end: "google.com/sea…",
+       or "docs.goog…" once the path is gone */
     & .arc-path {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: pre;
-    }
-    & .arc-host {
-      flex: 0 1 auto;
-    }
-    & .arc-path {
-      flex: 0 10000 auto;      /* shrinks long before the domain does */
       opacity: .55;
     }
     &[empty] {
