@@ -100,7 +100,6 @@ The sizes and colors are CSS variables at the top of `chrome.css`:
 - `--arc-url-max-width`: widest the URL pill gets
 - `--arc-bar-pad-start`: space before the first button
 - `--arc-tile-*`: essentials tile colors
-- `--arc-compact-sidebar-radius`: corner roundness of the pop-out sidebar in hidden-sidebar mode
 - `--arc-toolbar-icon-size`: size of the toolbar sidebar and site settings / extensions icons
 
 ## Tab undo safeguards
