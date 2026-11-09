@@ -29,7 +29,11 @@
       hostEl.className = "arc-host";
       pathEl = document.createElementNS(XHTML, "span");
       pathEl.className = "arc-path";
-      pill.append(hostEl, pathEl);
+      // one text box, so a long URL gets a single "…" at its end
+      const text = document.createElementNS(XHTML, "span");
+      text.className = "arc-url-text";
+      text.append(hostEl, pathEl);
+      pill.append(text);
       pill.addEventListener("mousedown", e => {
         if (e.button !== 0) return;
         e.preventDefault();
