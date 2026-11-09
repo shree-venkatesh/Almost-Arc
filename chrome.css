@@ -31,6 +31,8 @@
   --arc-tile-hover-bg: rgba(255, 255, 255, .22);
   --arc-tile-selected-bg: rgba(255, 255, 255, .36);
   --arc-tile-selected-border: rgba(255, 255, 255, .7);
+  /* Hidden-sidebar (compact) mode: corner radius of the pop-out sidebar */
+  --arc-compact-sidebar-radius: 24px;
 }
 
 :root:not([zen-single-toolbar="true"]):not([inDOMFullscreen="true"]):not([popup-window]) {
@@ -210,6 +212,20 @@
     top: calc(var(--zen-compact-float) / 2) !important;
     bottom: calc(var(--zen-compact-float) / 2) !important;
     height: calc(100% - var(--zen-compact-float)) !important;
+  }
+  /* Rounder corners like Arc's pop-out sidebar (Zen's squircle corners look tighter).
+     Zen sizes these corners from its own radius variables, so override those too. */
+  #navigator-toolbox {
+    --zen-native-inner-radius: var(--arc-compact-sidebar-radius) !important;
+    --zen-border-radius: var(--arc-compact-sidebar-radius) !important;
+  }
+  #navigator-toolbox,
+  #navigator-toolbox > *,
+  #navigator-toolbox::before,
+  #navigator-toolbox::after,
+  #titlebar {
+    border-radius: var(--arc-compact-sidebar-radius) !important;
+    corner-shape: round !important;
   }
   #zen-sidebar-top-buttons .titlebar-buttonbox-container {
     opacity: 1 !important;
