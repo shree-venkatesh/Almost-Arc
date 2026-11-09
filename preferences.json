@@ -50,12 +50,17 @@
   },
   {
     "property": "browser.urlbar.trimURLs",
-    "label": "Trim URLs \u2014 turn **ON**",
+    "label": "Trim URLs \u2014 on by default, leave **ON** (the URL pill needs it)",
     "type": "checkbox"
   },
   {
     "property": "browser.urlbar.trimHttps",
-    "label": "Hide https:// \u2014 turn **ON**",
+    "label": "Hide https:// \u2014 on by default in Zen, leave **ON**",
+    "type": "checkbox"
+  },
+  {
+    "property": "browser.urlbar.trimWww",
+    "label": "Hide www. \u2014 turn **ON** to show google.com like Arc",
     "type": "checkbox"
   },
   {

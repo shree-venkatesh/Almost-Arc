@@ -19,7 +19,7 @@ Built and tested on **Zen 1.24.1b (Firefox 159), macOS**.
 1. Install [Sine](https://github.com/CosmoCreeper/Sine).
 2. Zen → Settings → Sine Mods → Sine settings → enable **installing JS from unofficial sources**.
 3. Paste this mod's GitHub repo (`shree-venkatesh/Almost-Arc`) into the box under the marketplace and install it.
-4. In the mod's settings, set the recommended options: single toolbar **off**, hide toolbar in compact mode **off**, floating address bar **Always**, URL trimming **on**, and auto-PiP to taste.
+4. In the mod's settings, set the recommended options: single toolbar **off**, hide toolbar in compact mode **off**, floating address bar **Always**, hide www. **on**, and auto-PiP to taste.
 5. Restart Zen.
 
 ## Install with Homebrew (macOS)
@@ -33,6 +33,18 @@ Quit Zen before running `almost-arc install`. It runs the same `install.sh` desc
 
 - **Update:** `brew upgrade almost-arc`, then `almost-arc install`.
 - **Remove:** `almost-arc uninstall`, then `brew uninstall almost-arc`.
+
+## Install without Homebrew (macOS)
+
+```bash
+curl -fsSL https://almostarc.net/install.sh | bash
+```
+
+Quit Zen first. This downloads the latest release into `~/.almost-arc`, adds the same `almost-arc` command to `/usr/local/bin` (it may ask for your password), and installs. If you already have Homebrew, it tells you to use the Homebrew install instead, so there's only ever one `almost-arc` command.
+
+- **After a Zen update:** `almost-arc install`.
+- **Update Almost Arc:** `almost-arc update`.
+- **Remove:** `almost-arc uninstall` removes the mod, the command and `~/.almost-arc`.
 
 ## Install without Sine
 
