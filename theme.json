@@ -1,8 +1,8 @@
 {
   "name": "Almost Arc",
-  "description": "Arc's look and feel for Zen: toolbar as the top of the page card, colored to match the page; centered URL pill; Arc-style tiles and pop-out sidebar; Arc-style auto Picture-in-Picture; and Cmd+Z to undo tab changes.",
+  "description": "Arc's look and feel for Zen: toolbar as the top of the page card, colored to match the page; centered URL pill; Arc-style tiles and pop-out sidebar; Arc-style Picture-in-Picture (auto PiP, Arc's PiP controls, swipe to a corner); and Cmd+Z to undo tab changes.",
   "author": "shree-venkatesh",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "tags": [
     "arc",
     "toolbar",
@@ -54,6 +54,11 @@
         ]
       },
       "arcPipFlick.uc.js": {
+        "include": [
+          "chrome://global/content/pictureinpicture/player.xhtml"
+        ]
+      },
+      "arcPipLayout.uc.js": {
         "include": [
           "chrome://global/content/pictureinpicture/player.xhtml"
         ]

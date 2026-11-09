@@ -20,6 +20,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `JS/arcUrlbarButtons.uc.js` | Moves Zen's copy-URL button left of the pill and site-data button right of it |
 | `JS/arcCompactSidebar.uc.js` | Arc-like compact-mode pop-out sidebar + `#almost-arc-sidebar-toggle` button |
 | `JS/arcAutoPip.uc.js` | macOS auto-PiP on app/desktop switch via `lsappinfo`; closes its own PiP on return |
+| `JS/arcPipLayout.uc.js` | Loaded into the PiP window. Restyles Firefox's player like Arc: top bar (`#unpip` "Back to Tab", domain from `PictureInPicture.weakWinToBrowser`, our `#arc-pip-min`, `#close`), center 15 s skips + play/pause, inset progress-bar pill, volume bottom right; other loose `#controls > button`s hidden. The window's CSP blocks `<style>` and `data:` images, so CSS goes through `windowUtils.loadSheetUsingURIString` and icons are inline SVG. 15 s seeks move `#scrubber` (+ input/change events) using `#timestamp`'s duration; Minimize = Shift+click on `#close` (Firefox's close-without-pausing). Pref `almost-arc.pip-layout` |
 | `JS/arcPipFlick.uc.js` | Loaded into the PiP window (`chrome://global/content/pictureinpicture/player.xhtml`, via `@include` and theme.json). Two-finger swipe (wheel events) → glide to the corner in that direction (400 ms ease-out); rest of the swipe and its momentum ignored. Pref `almost-arc.pip-flick` |
 | `JS/arcTabUndo.uc.js` | Cmd+Z undo for tab close / move / pin (current session only, heavily safeguarded) |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL display (`almost-arc.domain-only`) |

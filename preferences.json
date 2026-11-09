@@ -89,6 +89,12 @@
     "defaultValue": true
   },
   {
+    "property": "almost-arc.pip-layout",
+    "label": "Arc's PiP controls: Back to Tab, Minimize, Close, 15 s skips, slim progress bar (applies to new PiP windows)",
+    "type": "checkbox",
+    "defaultValue": true
+  },
+  {
     "property": "almost-arc.pip-flick",
     "label": "Two-finger swipe over a PiP window sends it to a screen corner, like Arc (applies to new PiP windows)",
     "type": "checkbox",
