@@ -29,7 +29,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `site/` | almostarc.net: one self-contained `index.html` (currently a placeholder; the owner is designing the real page themselves). Analytics: GoatCounter (`shree-venkatesh.goatcounter.com`, no cookies) |
 | `site/install.sh` | The `curl -fsSL https://almostarc.net/install.sh \| bash` installer for people without Homebrew: downloads the latest release to `~/.almost-arc`, symlinks an `almost-arc` command (install / update / uninstall / --version) into `/usr/local/bin`, runs the release's `install.sh`. `--beta` (`| bash -s -- --beta`, `almost-arc install|update --beta`) uses the newest `vX.Y.Z` tag from the GitHub API instead of the latest Release. Refuses only when Almost Arc is already installed with Homebrew (the formula's `almost-arc` likewise refuses when `~/.almost-arc` exists). Everything runs inside `main()` so a truncated download can't run partway |
 | `.github/workflows/pages.yml` | Deploys `site/` to GitHub Pages on pushes to `main` that touch it |
-| `.github/workflows/update-homebrew.yml` | On a published Release, updates the formula in `shree-venkatesh/homebrew-tap` |
+| `.github/workflows/update-homebrew.yml` | On every Release / pre-release, attaches `almost-arc-X.Y.Z.tar.gz` (counted downloads); on full Releases, points the formula in `shree-venkatesh/homebrew-tap` at it |
 
 ## Install / test loop
 
@@ -93,8 +93,11 @@ Full Release, only when asked:
 - Promoting an existing beta: `gh release edit vX.Y.Z --prerelease=false --latest`
   (and retitle / rewrite the notes).
 
-Either way `.github/workflows/update-homebrew.yml` runs (event `release: released`;
-pre-releases never trigger it) and points `Formula/almost-arc.rb` in
-`shree-venkatesh/homebrew-tap` at the new tarball. It needs the
+`.github/workflows/update-homebrew.yml` attaches `almost-arc-X.Y.Z.tar.gz` (a
+`git archive` of the tag) to every Release and pre-release. Homebrew, the curl
+installer and `--beta` download that file, which is what the README's Shields.io
+downloads badge counts (GitHub doesn't count its automatic "Source code" archives).
+For full Releases only (event `released`), it then points `Formula/almost-arc.rb` in
+`shree-venkatesh/homebrew-tap` at that file. It needs the
 `HOMEBREW_TAP_TOKEN` secret (fine-grained token, Contents read/write on the tap
 only). Check the Actions tab; rerun it manually with the tag if it failed.

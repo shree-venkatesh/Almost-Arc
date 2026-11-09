@@ -79,7 +79,11 @@ main() {
   local tmp; tmp="$(mktemp -d)"
   # shellcheck disable=SC2064  # expand now: $tmp is local and gone by the time EXIT fires
   trap "rm -rf '$tmp'" EXIT
-  curl -fsSL "https://github.com/$REPO/archive/refs/tags/$tag.tar.gz" -o "$tmp/release.tar.gz" \
+  # The release file (GitHub counts its downloads); a tag without one (an older
+  # version, or a bare tag with --beta) falls back to GitHub's source archive.
+  curl -fsSL "https://github.com/$REPO/releases/download/$tag/almost-arc-$version.tar.gz" \
+       -o "$tmp/release.tar.gz" 2>/dev/null \
+    || curl -fsSL "https://github.com/$REPO/archive/refs/tags/$tag.tar.gz" -o "$tmp/release.tar.gz" \
     || fail "download failed."
   mkdir "$tmp/app"
   tar -xzf "$tmp/release.tar.gz" -C "$tmp/app" --strip-components 1

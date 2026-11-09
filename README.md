@@ -1,5 +1,7 @@
 # Almost Arc
 
+[![Downloads](https://img.shields.io/github/downloads/shree-venkatesh/Almost-Arc/total?label=downloads)](https://github.com/shree-venkatesh/Almost-Arc/releases)
+
 Makes Zen Browser look and feel almost like Arc.
 
 - **Toolbar is the top of the page card.** Rounded top corners, the card's shadow, a full-height sidebar beside it, and square corners in borderless fullscreen.

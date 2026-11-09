@@ -2,45 +2,76 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# Points the Homebrew formula (shree-venkatesh/homebrew-tap,
-# Formula/almost-arc.rb) at a newly published release.
-# Runs when a full (non-prerelease) Release is published or a pre-release is
-# promoted to a full Release ("released"); never for pre-releases or bare
-# tags. Can also be run manually from the Actions tab with a tag name.
+# For every published Release and pre-release:
+#   1. attaches almost-arc-X.Y.Z.tar.gz (the repo at that tag) as a release
+#      file. Homebrew and the curl installer download that file, so GitHub
+#      counts downloads (the automatic "Source code" archives aren't counted).
+#   2. for full Releases only (published, or a pre-release promoted to a
+#      Release: event "released"), points the Homebrew formula
+#      (shree-venkatesh/homebrew-tap, Formula/almost-arc.rb) at that file.
+# Can also be run manually from the Actions tab with a tag name (does both).
 # Needs the secret HOMEBREW_TAP_TOKEN: a fine-grained token with
 # Contents: read & write on shree-venkatesh/homebrew-tap only.
 
-name: Update Homebrew formula
+name: Release file and Homebrew formula
 
 on:
   release:
-    types: [released]
+    types: [published, released]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to point the formula at (e.g. v1.0.2)"
+        description: "Release tag (e.g. v1.1.4)"
         required: true
 
 permissions: {}
 
-concurrency: homebrew-tap
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
-  update-formula:
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+  release-file:
     runs-on: ubuntu-latest
-    env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    permissions:
+      contents: write   # upload the release file
+    outputs:
+      url: ${{ steps.file.outputs.url }}
+      sha: ${{ steps.file.outputs.sha }}
     steps:
-      - name: Compute release tarball checksum
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build and attach almost-arc-X.Y.Z.tar.gz
+        id: file
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag '$TAG' is not vX.Y.Z"; exit 1; }
-          url="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
-          sha="$(curl -fsSL --retry 3 "$url" | sha256sum | cut -d' ' -f1)"
-          echo "URL=$url" >> "$GITHUB_ENV"
-          echo "SHA=$sha" >> "$GITHUB_ENV"
-          echo "$url -> $sha"
+          name="almost-arc-${TAG#v}.tar.gz"
+          if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$name"; then
+            echo "$name is already attached"
+            gh release download "$TAG" -p "$name" -O "$name"
+          else
+            git archive --format=tar --prefix="almost-arc-${TAG#v}/" "$TAG" | gzip -n -9 > "$name"
+            gh release upload "$TAG" "$name"
+          fi
+          echo "url=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${name}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(sha256sum "$name" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
+  update-formula:
+    needs: release-file
+    if: github.event_name == 'workflow_dispatch' || (github.event.action == 'released' && !github.event.release.prerelease)
+    runs-on: ubuntu-latest
+    env:
+      URL: ${{ needs.release-file.outputs.url }}
+      SHA: ${{ needs.release-file.outputs.sha }}
+    steps:
+      # (no test download here: it would add to the download count)
       - uses: actions/checkout@v4
         with:
           repository: shree-venkatesh/homebrew-tap
