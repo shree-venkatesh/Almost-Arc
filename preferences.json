@@ -87,5 +87,11 @@
     "label": "Arc-style auto PiP when you switch to another app or desktop \u2014 macOS (restart Zen)",
     "type": "checkbox",
     "defaultValue": true
+  },
+  {
+    "property": "almost-arc.pip-flick",
+    "label": "Two-finger swipe over a PiP window sends it to a screen corner, like Arc (applies to new PiP windows)",
+    "type": "checkbox",
+    "defaultValue": true
   }
 ]

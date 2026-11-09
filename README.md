@@ -9,6 +9,7 @@ Makes Zen Browser look and feel almost like Arc.
 - **Arc-style essentials tiles:** light, frosted tiles, and an outlined tile for the selected one.
 - **Hidden-sidebar (compact) mode works like Arc.** The pop-out sidebar runs full height with the window buttons at its top, and a sidebar button starts the toolbar.
 - **Auto Picture-in-Picture like Arc:** a playing video pops out when you switch tabs, minimize, or switch to another app or desktop, and closes when you come back. Spotlight, screenshots and Control Center don't trigger it. App and desktop switching is macOS only.
+- **Flick PiP into a corner:** swipe with two fingers over the Picture-in-Picture window and it glides to the screen corner in that direction. Click and drag still puts it anywhere.
 - **Cmd+Z undoes your tab changes** from the current session: reopens closed tabs (back into their folder or Essentials), and puts moved and pinned or unpinned tabs back. Text fields keep their normal undo. See [Tab undo safeguards](#tab-undo-safeguards).
 - **Optional:** show only the domain in the URL pill.
 
@@ -83,6 +84,7 @@ To remove: `./uninstall.sh`.
 | `JS/arcUrlbarButtons.uc.js` | Moves the copy-link button next to the pill and site settings / extensions to the right |
 | `JS/arcCompactSidebar.uc.js` | Arc-style pop-out sidebar and toolbar sidebar button in compact mode |
 | `JS/arcAutoPip.uc.js` | Auto PiP when another app or desktop comes to the front (macOS); closes when you return. Pref `almost-arc.pip-on-blur` |
+| `JS/arcPipFlick.uc.js` | Two-finger swipe sends the PiP window to a corner. Pref `almost-arc.pip-flick` |
 | `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards. Pref `almost-arc.tab-undo` |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL. Pref `almost-arc.domain-only` (off by default) |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
@@ -98,6 +100,7 @@ To remove: `./uninstall.sh`.
 | --- | --- | --- |
 | `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes |
 | `almost-arc.pip-on-blur` | on | Auto PiP when you switch to another app or desktop (macOS) |
+| `almost-arc.pip-flick` | on | Two-finger swipe over a PiP window sends it to a corner |
 | `almost-arc.domain-only` | off | Show only the domain in the URL pill |
 | `almost-arc.pip-debug`, `almost-arc.undo-debug` | off | Write debug logs to your profile folder |
 

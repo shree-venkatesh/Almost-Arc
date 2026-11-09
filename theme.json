@@ -52,6 +52,11 @@
         "include": [
           "chrome://browser/content/browser.xhtml"
         ]
+      },
+      "arcPipFlick.uc.js": {
+        "include": [
+          "chrome://global/content/pictureinpicture/player.xhtml"
+        ]
       }
     }
   },

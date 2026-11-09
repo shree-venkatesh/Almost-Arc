@@ -12,7 +12,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
 | Path | What it is |
 | --- | --- |
-| `theme.json` | Sine manifest: name, version, `style.chrome`, `preferences`, `readme`, and `scripts` (every `JS/*.uc.js` with `include: chrome://browser/content/browser.xhtml`) |
+| `theme.json` | Sine manifest: name, version, `style.chrome`, `preferences`, `readme`, and `scripts` (every `JS/*.uc.js` with its `include`: `chrome://browser/content/browser.xhtml`, or the PiP player for `arcPipFlick.uc.js`) |
 | `preferences.json` | Mod settings UI (checkbox / dropdown / string). Checkbox prefs drive `-moz-pref()` media queries in CSS |
 | `chrome.css` | All styling: slim toolbar, card top, centered URL pill, compact sidebar, essentials tiles, fullscreen corners |
 | `JS/arcToolbarTint.uc.js` | Samples the top 4 CSS px of the page (`drawSnapshot`) once per load (150/1000/2500 ms) and tints the toolbar |
@@ -20,6 +20,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `JS/arcUrlbarButtons.uc.js` | Moves Zen's copy-URL button left of the pill and site-data button right of it |
 | `JS/arcCompactSidebar.uc.js` | Arc-like compact-mode pop-out sidebar + `#almost-arc-sidebar-toggle` button |
 | `JS/arcAutoPip.uc.js` | macOS auto-PiP on app/desktop switch via `lsappinfo`; closes its own PiP on return |
+| `JS/arcPipFlick.uc.js` | Loaded into the PiP window (`chrome://global/content/pictureinpicture/player.xhtml`, via `@include` and theme.json). Two-finger swipe (wheel events) → glide to the corner in that direction (400 ms ease-out); rest of the swipe and its momentum ignored. Pref `almost-arc.pip-flick` |
 | `JS/arcTabUndo.uc.js` | Cmd+Z undo for tab close / move / pin (current session only, heavily safeguarded) |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL display (`almost-arc.domain-only`) |
 | `install.sh` / `uninstall.sh` | Non-Sine install: fx-autoconfig loader, CSS import, scripts, `user.js` block |
