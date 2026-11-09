@@ -95,8 +95,10 @@ Full Release, only when asked:
 
 `.github/workflows/update-homebrew.yml` attaches `almost-arc-X.Y.Z.tar.gz` (a
 `git archive` of the tag) to every Release and pre-release. Homebrew, the curl
-installer and `--beta` download that file, which is what the README's Shields.io
-downloads badge counts (GitHub doesn't count its automatic "Source code" archives).
+installer and `--beta` download that file, so GitHub counts downloads (it doesn't
+count its automatic "Source code" archives). The count is an internal tracker, not
+shown in the README:
+`gh api repos/shree-venkatesh/Almost-Arc/releases -q '.[]|"\(.tag_name) \([.assets[].download_count]|add // 0)"'`
 For full Releases only (event `released`), it then points `Formula/almost-arc.rb` in
 `shree-venkatesh/homebrew-tap` at that file. It needs the
 `HOMEBREW_TAP_TOKEN` secret (fine-grained token, Contents read/write on the tap
