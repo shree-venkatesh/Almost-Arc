@@ -33,6 +33,8 @@
   --arc-tile-selected-border: rgba(255, 255, 255, .7);
   /* Hidden-sidebar (compact) mode: corner radius of the pop-out sidebar */
   --arc-compact-sidebar-radius: 24px;
+  /* Toolbar sidebar and site settings / extensions icons */
+  --arc-toolbar-icon-size: 18px;
 }
 
 :root:not([zen-single-toolbar="true"]):not([inDOMFullscreen="true"]):not([popup-window]) {
@@ -236,6 +238,16 @@
 #almost-arc-sidebar-toggle {
   list-style-image: url("chrome://browser/skin/zen-icons/sidebar.svg");
 }
+/* Toolbar sidebar button icon (Zen's own Compact Mode button in the
+   pop-out sidebar keeps Zen's size) */
+toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon {
+  width: calc(var(--arc-toolbar-icon-size) + 2 * var(--toolbarbutton-inner-padding)) !important;
+  height: calc(var(--arc-toolbar-icon-size) + 2 * var(--toolbarbutton-inner-padding)) !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
 :root:not([arc-compact-sidebar="true"]) #almost-arc-sidebar-toggle,
 :root:not([zen-compact-mode="true"]) #almost-arc-sidebar-toggle {
   display: none;
@@ -261,6 +273,10 @@
     height: 16px;
     -moz-context-properties: fill, fill-opacity;
     fill: currentColor;
+  }
+  &#zen-site-data-icon-button image {
+    width: var(--arc-toolbar-icon-size) !important;
+    height: var(--arc-toolbar-icon-size) !important;
   }
   &:hover {
     background: var(--arc-url-hover-bg) !important;
