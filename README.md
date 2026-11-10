@@ -12,6 +12,7 @@ Makes Zen Browser look and feel almost like Arc.
 - **Arc's PiP controls:** **Back to Tab**, the site's domain, **Minimize** (closes PiP and keeps the video playing, so you still hear it) and **Close** across the top; a big play/pause with 15-second skips in the middle; a slim progress bar at the bottom. Firefox's volume controls stay, bottom right.
 - **Flick PiP into a corner:** swipe with two fingers over the Picture-in-Picture window and it glides to the screen corner in that direction. Click and drag still puts it anywhere.
 - **Cmd+Z undoes your tab changes** from the current session: reopens closed tabs (back into their folder or Essentials), and puts moved and pinned or unpinned tabs back. Text fields keep their normal undo. See [Tab undo safeguards](#tab-undo-safeguards).
+- **Tells you when something needs doing:** if a Zen update removed the script loader, a notice at the bottom of the window says to rerun `almost-arc install`. When a new Almost Arc release is out, a bar at the top says so, with the command to update (install script, Homebrew and curl installs; Sine updates mods itself). It checks GitHub at most once a day.
 - **Optional:** show only the domain in the URL pill.
 
 Built and tested on **Zen 1.24.1b (Firefox 159), macOS**.
@@ -91,6 +92,7 @@ To remove: `./uninstall.sh`.
 | `JS/arcPipLayout.uc.js` | Arc's PiP controls. Pref `almost-arc.pip-layout` |
 | `JS/arcPipFlick.uc.js` | Two-finger swipe sends the PiP window to a corner. Pref `almost-arc.pip-flick` |
 | `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards. Pref `almost-arc.tab-undo` |
+| `JS/arcNotices.uc.js` | Marks the window as scripted (so the CSS can warn when the loader is missing) and shows the new-release notice. Pref `almost-arc.update-notice` |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL. Pref `almost-arc.domain-only` (off by default) |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `assets/app-icon.png` | The Zen app icon `install.sh` sets on macOS |
@@ -109,6 +111,8 @@ To remove: `./uninstall.sh`.
 | `almost-arc.pip-layout` | on | Arc's PiP controls (Back to Tab, Minimize, Close, 15 s skips) |
 | `almost-arc.pip-flick` | on | Two-finger swipe over a PiP window sends it to a corner |
 | `almost-arc.domain-only` | off | Show only the domain in the URL pill |
+| `almost-arc.update-notice` | on | Notice when a new release is out (checks GitHub once a day) |
+| `almost-arc.hide-scripts-notice` | off | Hide the "scripts aren't running" notice |
 | `almost-arc.pip-debug`, `almost-arc.undo-debug` | off | Write debug logs to your profile folder |
 
 Restart Zen after changing one. Settings from 1.0.0 (`arc-toolbar.*`) are carried over to these names automatically.

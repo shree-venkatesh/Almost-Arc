@@ -403,3 +403,31 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     }
   }
 }
+
+/* ---- "Scripts aren't running" notice --------------------------------------
+   JS/arcNotices.uc.js sets [almost-arc-js] on load. Without it the script
+   loader is missing (a Zen update removes it), so after a few seconds this
+   shows at the bottom of the window. Clicks pass through it. Hide it with
+   almost-arc.hide-scripts-notice = true. */
+@media not -moz-pref("almost-arc.hide-scripts-notice") {
+  :root:not([almost-arc-js]) #browser::after {
+    content: "Almost Arc's scripts aren't running (a Zen update removes them). Quit Zen and run: almost-arc install";
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2147483647;
+    max-width: calc(100vw - 48px);
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: #1d1e22;
+    color: #f3f3f5;
+    font: menu;
+    font-size: 12.5px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .25);
+    pointer-events: none;
+    opacity: 0;
+    animation: almost-arc-js-notice 0s 8s forwards;
+  }
+}
+@keyframes almost-arc-js-notice { to { opacity: 1; } }

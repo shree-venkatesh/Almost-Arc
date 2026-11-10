@@ -110,6 +110,12 @@ fi
 rm -f "$CHROME/JS/zzArcDebug.uc.js" "$CHROME/JS/zzPipDebug.uc.js"
 cp "$HERE"/JS/*.uc.js "$CHROME/JS/"
 
+# What's installed and how to update it, for the new-release notice (arcNotices.uc.js).
+VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$HERE/theme.json" | head -1)"
+METHOD=git; command -v almost-arc >/dev/null 2>&1 && METHOD=cli
+DIR_JSON="$(printf '%s' "$HERE" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+printf '{"version": "%s", "method": "%s", "dir": "%s"}\n' "$VERSION" "$METHOD" "$DIR_JSON" > "$CHROME/almost-arc-install.json"
+
 # ---- 4. prefs (user.js, managed block) ----------------------------------
 USERJS="$ZEN_PROFILE/user.js"
 touch "$USERJS"
