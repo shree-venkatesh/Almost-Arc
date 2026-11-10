@@ -8,7 +8,7 @@ Makes Zen Browser look and feel almost like Arc.
 - **Copy-link button** sits right next to the pill. **Site settings / extensions** moves to the right side of the toolbar.
 - **Arc-style essentials tiles:** light, frosted tiles, and an outlined tile for the selected one.
 - **Hidden-sidebar (compact) mode works like Arc.** The pop-out sidebar runs full height with the window buttons at its top, and a sidebar button starts the toolbar.
-- **Auto Picture-in-Picture like Arc:** a playing video pops out when you switch tabs, minimize, or switch to another app or desktop, and closes when you come back. Spotlight, screenshots and Control Center don't trigger it. App and desktop switching is macOS only.
+- **Auto Picture-in-Picture like Arc:** a playing video pops out when you switch tabs, minimize, or switch to another app or desktop, and closes when you come back. Spotlight, screenshots and Control Center don't trigger it, and neither does clicking an app that doesn't cover Zen's window, such as one on another monitor. App and desktop switching is macOS only.
 - **Arc's PiP controls:** **Back to Tab**, the site's domain, **Minimize** (closes PiP and keeps the video playing, so you still hear it) and **Close** across the top; a big play/pause with 15-second skips in the middle; a slim progress bar at the bottom. Firefox's volume controls stay, bottom right.
 - **Flick PiP into a corner:** swipe with two fingers over the Picture-in-Picture window and it glides to the screen corner in that direction. Click and drag still puts it anywhere.
 - **Cmd+Z undoes your tab changes** from the current session: reopens closed tabs (back into their folder or Essentials), and puts moved and pinned or unpinned tabs back. Text fields keep their normal undo. See [Tab undo safeguards](#tab-undo-safeguards).
@@ -97,6 +97,7 @@ To remove: `./uninstall.sh`.
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `assets/app-icon.png` | The Zen app icon `install.sh` sets on macOS |
 | `vendor/fx-autoconfig/` | Script loader used by `install.sh` |
+| `tests/` | Auto-PiP tests: `node --test 'tests/*.test.mjs'` (Node 22) |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |
 
 ## Settings

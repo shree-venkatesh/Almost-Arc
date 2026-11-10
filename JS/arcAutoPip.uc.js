@@ -4,7 +4,9 @@
 //                 desktop/Space switch) while a video plays, pop it into PiP; close it
 //                 when you come back. Spotlight, screenshots, Control Center and
 //                 notifications are background helpers that never become the front
-//                 app, so they don't trigger it. macOS only. Pref: almost-arc.pip-on-blur
+//                 app, so they don't trigger it. Nor does an app that doesn't cover
+//                 Zen's window (e.g. on another monitor): you can still see the video.
+//                 macOS only. Pref: almost-arc.pip-on-blur
 // ==/UserScript==
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -48,6 +50,7 @@
   const PIP_URL = "chrome://global/content/pictureinpicture/player.xhtml";
   const MY_PID = Services.appinfo.processID;
   const RETRY_MS = 40;            // second look if macOS hadn't switched the front app yet
+  const SPACE_MS = 600;           // a desktop (Space) switch animates; look again after it
   let token = 0;
   // What this script opened, so it can close exactly that on return
   let ours = null;   // { browser, before: Set<pipWindow> }
@@ -91,19 +94,50 @@
     "com.apple.PIPAgent",
   ]);
 
-  // Returns { zen: bool, real: bool, front: string }.
+  // Returns { zen: bool, real: bool, pid: number, front: string }.
   //   zen  - Zen is still the front app
   //   real - the front app is a normal app (not a background helper / system UI)
   async function frontInfo() {
     const front = (await run(["front"])).match(/ASN:[^\s]+/)?.[0];
-    if (myASN && front && front === myASN) return { zen: true, real: false, front };
+    if (myASN && front && front === myASN) return { zen: true, real: false, pid: MY_PID, front };
     const info = await run(["info", "-only", "pid", "-only", "ApplicationType", "-only", "bundleid", front || "front"]);
     const pid = Number(info.match(/"pid"\s*=\s*(\d+)/)?.[1] ?? NaN);
     const type = info.match(/"ApplicationType"\s*=\s*"([^"]+)"/)?.[1] ?? "";
     const bundle = info.match(/"CFBundleIdentifier"\s*=\s*"([^"]+)"/)?.[1] ?? "";
     const zen = pid === MY_PID;
     const real = !zen && type === "Foreground" && !IGNORE_BUNDLES.has(bundle);
-    return { zen, real, front: `${bundle || front} (${type || "?"})` };
+    return { zen, real, pid, front: `${bundle || front} (${type || "?"})` };
+  }
+
+  // On-screen windows, front to back, from CoreGraphics (via osascript; window
+  // positions need no permission, only window titles would).
+  const OSASCRIPT = "/usr/bin/osascript";
+  const WINDOWS_JXA = `ObjC.import("CoreGraphics");
+    function run() {
+      var list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1 | 16, 0))) || [];
+      return JSON.stringify(list.map(function (w) {
+        return { pid: w.kCGWindowOwnerPID, layer: w.kCGWindowLayer, alpha: w.kCGWindowAlpha, b: w.kCGWindowBounds };
+      }));
+    }`;
+  async function screenWindows() {
+    const proc = await Subprocess.call({ command: OSASCRIPT, arguments: ["-l", "JavaScript", "-e", WINDOWS_JXA] });
+    let out = "", chunk;
+    while ((chunk = await proc.stdout.readString())) out += chunk;
+    await proc.wait();
+    return JSON.parse(out).filter(w => w.layer === 0 && w.alpha !== 0 && w.b);   // normal app windows
+  }
+  const overlap = (a, b) =>
+    Math.max(0, Math.min(a.X + a.Width, b.X + b.Width) - Math.max(a.X, b.X)) *
+    Math.max(0, Math.min(a.Y + a.Height, b.Y + b.Height) - Math.max(a.Y, b.Y));
+
+  // Can you still see this Zen window? Yes if it's on screen and no window of the
+  // app you switched to overlaps it, e.g. you clicked an app on another monitor.
+  async function zenStillVisible(frontPid) {
+    const me = { X: window.screenX, Y: window.screenY, Width: window.outerWidth, Height: window.outerHeight };
+    const wins = await screenWindows();
+    const onScreen = wins.some(w => w.pid === MY_PID && overlap(w.b, me) > 0.5 * me.Width * me.Height);
+    if (!onScreen) return false;                               // another desktop (Space)
+    return !wins.some(w => w.pid === frontPid && overlap(w.b, me) > 0);
   }
 
   function canPip() {
@@ -144,6 +178,17 @@
 
     if (r.zen) { log("skip: Zen is still the front app"); return; }
     if (!r.real) { log("skip: front app is system UI / a background helper"); return; }
+
+    // Clicked an app that doesn't cover Zen (another monitor, side by side): you can
+    // still see the video. Check twice, since a Space switch is still animating at first.
+    try {
+      if (await zenStillVisible(r.pid)) {
+        await new Promise(res => setTimeout(res, SPACE_MS));
+        if (my !== token) return;
+        if (await zenStillVisible(r.pid)) { log("skip: Zen's window is still visible (the front app doesn't cover it)"); return; }
+      }
+    } catch (e) { log(`window check failed, popping out anyway: ${e}`); }
+    if (my !== token) return;
 
     const again = canPip();
     if (again) { log(`skip: ${again}`); return; }
