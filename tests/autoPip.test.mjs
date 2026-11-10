@@ -110,6 +110,21 @@ describe("closes its PiP when you come back", () => {
     assert.equal(env.pipList.length, 0, why(env));
   });
 
+  test("closes it through Firefox, so switching tabs still auto-PiPs afterwards", async () => {
+    const env = await loadAutoPip({ front: "safari" });
+    await env.deactivate();
+    env.activate();
+    assert.equal(env.pipList.length, 0);
+    assert.ok(!env.tabStuckInPip, "Firefox still thinks the tab is in PiP: tab-switch auto-PiP breaks");
+  });
+
+  test("older Firefox without closeFromForeground: still closes the window", async () => {
+    const env = await loadAutoPip({ front: "safari", oldPlayer: true });
+    await env.deactivate();
+    env.activate();
+    assert.equal(env.pipList.length, 0, why(env));
+  });
+
   test("leaves a PiP that was already open (opened by hand)", async () => {
     const env = await loadAutoPip({ front: "safari", openOnToggle: false });
     const manual = env.existingPip();

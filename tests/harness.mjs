@@ -50,6 +50,7 @@ export const APPS = {
  *                arrays for successive looks (the last repeats), or "fail".
  *                Default: the app you switched to fully covers Zen's window.
  *   openOnToggle true (default): an AutoToggle opens a PiP window for the tab
+ *   oldPlayer    true: PiP windows lack closeFromForeground() (older Firefox)
  */
 export async function loadAutoPip(opts = {}) {
   const o = {
@@ -113,10 +114,25 @@ export async function loadAutoPip(opts = {}) {
   const autoPipped = new WeakMap();
   const winToBrowser = new WeakMap();
   const pipList = [];
+  // Firefox's own record of which tabs have a PiP open (PictureInPicture's
+  // browserWeakMap). While a tab is in it, Firefox keeps the tab "visible", so
+  // switching away from it never auto-PiPs. Only Firefox's close paths clear it;
+  // window.close() on the player does not.
+  const firefoxPipTabs = new Map();
   const makePip = owner => {
-    const w = { document: { documentURI: PIP_URL }, closed: false, close() { this.closed = true; pipList.splice(pipList.indexOf(this), 1); } };
+    const w = {
+      document: { documentURI: PIP_URL }, closed: false,
+      close() { this.closed = true; pipList.splice(pipList.indexOf(this), 1); },
+    };
+    if (!o.oldPlayer) w.closeFromForeground = () => {   // player.js: closeSinglePipWindow({ reason: "Foregrounded" })
+      if (owner) {
+        const n = (firefoxPipTabs.get(owner) || 1) - 1;
+        n > 0 ? firefoxPipTabs.set(owner, n) : firefoxPipTabs.delete(owner);
+      }
+      w.close();
+    };
     pipList.push(w);
-    if (owner) winToBrowser.set(w, owner);
+    if (owner) { winToBrowser.set(w, owner); firefoxPipTabs.set(owner, (firefoxPipTabs.get(owner) || 0) + 1); }
     return w;
   };
   const tabAttrs = new Set();
@@ -191,6 +207,8 @@ export async function loadAutoPip(opts = {}) {
 
   return {
     toggles, logs, calls, prefs, pipList, browser,
+    /** Firefox still thinks this tab has a PiP open (tab switching won't auto-PiP it). */
+    get tabStuckInPip() { return firefoxPipTabs.has(browser) && !pipList.some(w => winToBrowser.get(w) === browser); },
     /** Another app or desktop took focus; resolves when the script has decided. */
     async deactivate() {
       await Promise.all((listeners.deactivate || []).map(fn => fn({ type: "deactivate" })));

@@ -211,7 +211,12 @@
       // the player we opened: belongs to that tab's video, and wasn't there before
       const owner = PiP?.weakWinToBrowser?.get(w);
       if ((owner ? owner === browser : true) && !before.has(w)) {
-        w.close();
+        // Close it the way Firefox closes its own auto-PiP (player.js
+        // closeFromForeground -> closeSinglePipWindow "Foregrounded"). A bare
+        // w.close() skips Firefox's bookkeeping: the tab stays marked as in PiP,
+        // is never treated as hidden, and switching tabs stops auto-PiPing it.
+        if (typeof w.closeFromForeground === "function") w.closeFromForeground();
+        else w.close();
         closed++;
       }
     }
