@@ -6,13 +6,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Almost Arc</title>
-<meta name="description" content="A free mod that makes Zen Browser look and feel almost like Arc.">
+<title>Almost Arc: make Zen Browser look like Arc</title>
+<meta name="description" content="Free, open-source mod that makes Zen Browser look and feel like Arc: centered URL pill, page-tinted toolbar, Arc's compact sidebar and Picture-in-Picture.">
 <link rel="canonical" href="https://almostarc.net/">
-<meta property="og:title" content="Almost Arc">
-<meta property="og:description" content="A free mod that makes Zen Browser look and feel almost like Arc.">
+<!-- link previews (iMessage, Slack, Discord, X...) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Almost Arc">
+<meta property="og:title" content="Almost Arc: make Zen Browser look like Arc">
+<meta property="og:description" content="Free, open-source mod that makes Zen Browser look and feel like Arc.">
 <meta property="og:url" content="https://almostarc.net/">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2317191d'/%3E%3Crect x='7' y='13' width='18' height='6' rx='3' fill='%23ffffff'/%3E%3C/svg%3E">
+<meta property="og:image" content="https://almostarc.net/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Almost Arc: make Zen Browser look and feel almost like Arc">
+<meta name="twitter:card" content="summary_large_image">
+<!-- icons: SVG for browsers, a 96px PNG for Google's search results, 180px for iOS -->
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-96.png" type="image/png" sizes="96x96">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Almost Arc",
+  "description": "A free, open-source mod that makes Zen Browser look and feel almost like Arc.",
+  "url": "https://almostarc.net/",
+  "applicationCategory": "BrowserApplication",
+  "operatingSystem": "macOS",
+  "license": "https://mozilla.org/MPL/2.0/",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "downloadUrl": "https://github.com/shree-venkatesh/Almost-Arc/releases/latest",
+  "codeRepository": "https://github.com/shree-venkatesh/Almost-Arc",
+  "author": { "@type": "Person", "name": "Shree Venkatesh", "url": "https://github.com/shree-venkatesh" }
+}
+</script>
 <script>
   // Apply a saved theme before first paint (no flash). Falls back to the system theme.
   try { var t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
