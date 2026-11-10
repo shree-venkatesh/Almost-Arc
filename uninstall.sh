@@ -18,4 +18,14 @@ done
 rm -f "$CHROME/almost-arc.css"
 [ -f "$CHROME/userChrome.css" ] && sed -i.bak '/almost-arc.css/d' "$CHROME/userChrome.css"
 [ -f "$ZEN_PROFILE/user.js" ] && sed -i.bak '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$ZEN_PROFILE/user.js"
+# Remove the Almost Arc app icon that install.sh set (macOS).
+APP_BUNDLE="${ZEN_APP:-/Applications/Zen.app/Contents/Resources}"; APP_BUNDLE="${APP_BUNDLE%/Contents/Resources}"
+if [ "$(uname)" = Darwin ] && [ -e "$APP_BUNDLE/Icon"$'\r' ]; then
+  ISUDO=""; [ -w "$APP_BUNDLE" ] || ISUDO="sudo"
+  $ISUDO osascript -l JavaScript -e 'function run(a) { ObjC.import("AppKit");
+    return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(null, a[0], 0); }' \
+    "$APP_BUNDLE" >/dev/null 2>&1 || true
+  [ -e "$APP_BUNDLE/Icon"$'\r' ] && $ISUDO rm -f "$APP_BUNDLE/Icon"$'\r' || true
+  echo "Removed the Almost Arc icon from Zen."
+fi
 echo "Removed. Restart Zen. Prefs it changed keep their current values; reset them in about:config if you want."

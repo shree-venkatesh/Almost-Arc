@@ -79,6 +79,24 @@ else
   echo "chrome/utils already exists (Sine/fx-autoconfig) - leaving it."
 fi
 
+# ---- app icon (macOS) ----------------------------------------------------
+# Gives Zen.app the Almost Arc icon in the Dock and Finder: a Finder custom icon,
+# the same as pasting one in Get Info. uninstall.sh removes it. Zen updates do
+# too, like the loader. Skip with ALMOST_ARC_ICON=0.
+APP_BUNDLE="${ZEN_APP%/Contents/Resources}"
+if [ "$(uname)" = Darwin ] && [ "${ALMOST_ARC_ICON:-1}" != 0 ] &&
+   [ "$APP_BUNDLE" != "$ZEN_APP" ] && [ -d "$APP_BUNDLE" ] && [ -f "$HERE/assets/app-icon.png" ]; then
+  ISUDO=""; [ -w "$APP_BUNDLE" ] || ISUDO="sudo"
+  if [ "$($ISUDO osascript -l JavaScript -e 'function run(a) { ObjC.import("AppKit");
+        var img = $.NSImage.alloc.initWithContentsOfFile(a[0]);
+        return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, a[1], 0); }' \
+        "$HERE/assets/app-icon.png" "$APP_BUNDLE" 2>/dev/null)" = true ]; then
+    echo "Set the Almost Arc icon on Zen (the Dock picks it up when Zen next opens)."
+  else
+    echo "Couldn't set the app icon (skipped; everything else still works)."
+  fi
+fi
+
 # ---- 2. styles -----------------------------------------------------------
 cp "$HERE/chrome.css" "$CHROME/almost-arc.css"
 touch "$CHROME/userChrome.css"

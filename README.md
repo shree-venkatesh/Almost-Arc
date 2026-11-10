@@ -64,6 +64,7 @@ Quit Zen first. The script then:
 - **Adds the styles** to your profile's `chrome/` folder as `almost-arc.css`, imported from `userChrome.css`. Your existing CSS is kept.
 - **Adds the scripts** to `chrome/JS/`.
 - **Writes the recommended settings** into `user.js` in a marked block that's easy to remove.
+- **Gives Zen the Almost Arc icon** in the Dock and Finder (macOS), as a Finder custom icon. `./uninstall.sh` puts Zen's own icon back. To keep Zen's icon, install with `ALMOST_ARC_ICON=0 ./install.sh`.
 
 Then open `about:support`, click **Clear startup cache**, and let Zen restart.
 
@@ -73,7 +74,7 @@ Linux, or a non-default profile or install location:
 ZEN_PROFILE=/path/to/profile ZEN_APP=/path/to/zen-install ./install.sh
 ```
 
-**After every Zen update**, rerun `./install.sh`. Updates replace the app folder and remove the script loader. Your profile files are not affected.
+**After every Zen update**, rerun `./install.sh`. Updates replace the app folder and remove the script loader and the icon. Your profile files are not affected.
 
 To remove: `./uninstall.sh`.
 
@@ -92,6 +93,7 @@ To remove: `./uninstall.sh`.
 | `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards. Pref `almost-arc.tab-undo` |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL. Pref `almost-arc.domain-only` (off by default) |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
+| `assets/app-icon.png` | The Zen app icon `install.sh` sets on macOS |
 | `vendor/fx-autoconfig/` | Script loader used by `install.sh` |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |
 
