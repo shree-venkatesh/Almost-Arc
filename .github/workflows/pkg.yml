@@ -62,7 +62,14 @@ jobs:
           R=/Applications/Zen.app/Contents/Resources
           test -f "$R/config.js"
           test -f "$R/defaults/pref/config-prefs.js"
-          codesign --verify /Applications/Zen.app/Contents/MacOS/zen
+          # Zen still starts with the loader in its app folder (the loader and icon
+          # change the bundle, so its code signature no longer verifies; that's
+          # expected and Zen runs regardless)
+          rm -f /tmp/zen-shot.png
+          /Applications/Zen.app/Contents/MacOS/zen --headless --screenshot /tmp/zen-shot.png about:blank &
+          for _ in $(seq 1 60); do [ -s /tmp/zen-shot.png ] && break; sleep 1; done
+          pkill -x zen || true; sleep 2
+          test -s /tmp/zen-shot.png
           P="$HOME/Library/Application Support/zen"
           REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$P/profiles.ini")"
           C="$P/$REL/chrome"
