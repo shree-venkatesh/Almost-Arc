@@ -25,6 +25,7 @@ set -uo pipefail
 PKGDIR="/Library/Application Support/Almost Arc/pkg"
 APP=/Applications/Zen.app
 ZEN_DMG="https://github.com/zen-browser/desktop/releases/latest/download/zen.macos-universal.dmg"
+ZEN_TEAM=9V5K9TP787        # the Apple Developer ID team that signs Zen
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 say() { echo "almost-arc: $*"; }
@@ -61,9 +62,10 @@ if [ ! -d "$APP" ]; then
   # Copy it off the disk image without Finder metadata (which fails codesign's
   # checks), verify the copy, and only then put it in Applications.
   ditto --noextattr --noqtn "$src" "$tmp/Zen.app" || fail "Couldn't copy Zen from the download."
-  # Intact, and signed by a Developer ID (how notarized apps like Zen are signed)
-  if ! out="$(codesign --verify --deep --strict "$tmp/Zen.app" 2>&1)" ||
-     ! codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+  xattr -cr "$tmp/Zen.app" 2>/dev/null
+  # Intact, and signed by Zen's own Developer ID team
+  if ! out="$(codesign --verify --deep "$tmp/Zen.app" 2>&1)" ||
+     ! codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -qx "TeamIdentifier=$ZEN_TEAM"; then
     say "codesign: $out"
     codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Identifier)=' | sed 's/^/almost-arc: /'
     fail "The Zen download failed its signature check, so it wasn't installed."
