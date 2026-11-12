@@ -30,6 +30,8 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 | `tests/` | `node --test 'tests/*.test.mjs'` (Node 22, no dependencies). `harness.mjs` runs a real `JS/*.uc.js` in `node:vm` with Zen, Firefox and macOS (`lsappinfo`, `osascript` window list) faked; `autoPip.test.mjs` covers every auto-PiP case, `notices.test.mjs` the notices. CI: `.github/workflows/tests.yml` |
 | `site/` | almostarc.net: one self-contained `index.html` (currently a placeholder; the owner is designing the real page themselves). Analytics: GoatCounter (`shree-venkatesh.goatcounter.com`, no cookies) |
 | `site/install.sh` | The `curl -fsSL https://almostarc.net/install.sh \| bash` installer for people without Homebrew: downloads the latest release to `~/.almost-arc`, symlinks an `almost-arc` command (install / update / uninstall / --version) into `/usr/local/bin`, runs the release's `install.sh`. `--beta` (`| bash -s -- --beta`, `almost-arc install|update --beta`) uses the newest `vX.Y.Z` tag from the GitHub API instead of the latest Release. Refuses only when Almost Arc is already installed with Homebrew (the formula's `almost-arc` likewise refuses when `~/.almost-arc` exists). Everything runs inside `main()` so a truncated download can't run partway |
+| `pkg/` | "Almost Arc for Zen" macOS installer. `build.sh <version> <tarball> <out.pkg>` (macOS only; unsigned unless `PKG_SIGN_IDENTITY`) packs the release tarball + `site/install.sh` into `/Library/Application Support/Almost Arc/pkg`. `scripts/preinstall` asks to quit Zen (AppleScript quit, never force). `scripts/postinstall` (root): downloads official Zen if missing (codesign-checked, owned by the user so it self-updates), creates a profile with one headless Zen run if none, installs loader + icon + `/usr/local/bin/almost-arc`, then runs `site/install.sh` as the console user with `ALMOST_ARC_TARBALL`/`ALMOST_ARC_VERSION`/`ALMOST_ARC_ICON=0`, then clears the startup cache. `distribution.xml`: `rootVolumeOnly` (no destination page), no license page, logo background built by `build.sh`; welcome/conclusion pages are HTML converted to RTF by `textutil` (Installer shows HTML as source). macOS ships bash 3.2: no empty arrays under `set -u` |
+| `.github/workflows/pkg.yml` | Builds the .pkg on macOS, installs it on a fresh runner (no Zen), checks files, installs again; attaches it to every Release / pre-release |
 | `.github/workflows/pages.yml` | Deploys `site/` to GitHub Pages on pushes to `main` that touch it |
 | `.github/workflows/update-homebrew.yml` | On every Release / pre-release, attaches `almost-arc-X.Y.Z.tar.gz` (counted downloads); on full Releases, points the formula in `shree-venkatesh/homebrew-tap` at it |
 
@@ -94,6 +96,9 @@ Full Release, only when asked:
   cover everything since the last full Release, including the betas in between.
 - Promoting an existing beta: `gh release edit vX.Y.Z --prerelease=false --latest`
   (and retitle / rewrite the notes).
+
+`.github/workflows/pkg.yml` attaches `Almost-Arc-for-Zen-X.Y.Z.pkg` to every Release
+and pre-release.
 
 `.github/workflows/update-homebrew.yml` attaches `almost-arc-X.Y.Z.tar.gz` (a
 `git archive` of the tag) to every Release and pre-release. Homebrew, the curl

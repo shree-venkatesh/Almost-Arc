@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<installer-gui-script minSpecVersion="2">
+  <title>Almost Arc for Zen</title>
+  <welcome file="welcome.rtf"/>
+  <conclusion file="conclusion.rtf"/>
+  <!-- logo bottom-left under the steps, like most installers (built by build.sh) -->
+  <background file="background.tiff" alignment="bottomleft" scaling="none"/>
+  <background-darkAqua file="background.tiff" alignment="bottomleft" scaling="none"/>
+  <!-- rootVolumeOnly: always the startup disk, no "Select a Destination" page -->
+  <options customize="never" require-scripts="true" rootVolumeOnly="true" hostArchitectures="arm64,x86_64"/>
+  <volume-check><allowed-os-versions><os-version min="13.0"/></allowed-os-versions></volume-check>
+  <choices-outline><line choice="default"/></choices-outline>
+  <choice id="default" title="Almost Arc for Zen">
+    <pkg-ref id="net.almostarc.installer"/>
+  </choice>
+  <pkg-ref id="net.almostarc.installer" version="@VERSION@" onConclusion="none">almost-arc.pkg</pkg-ref>
+</installer-gui-script>

@@ -1,0 +1,119 @@
+#!/bin/bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Almost Arc for Zen .pkg: runs as root after the payload (the release file
+# and the curl installer) lands in $PKGDIR.
+#
+#   1. Zen: if it isn't installed, download the official Zen from Zen's own
+#      GitHub releases (signature checked) and install it. Zen stays Zen's
+#      product: unmodified apart from the loader below, updating itself.
+#   2. Zen profile: a fresh Zen has none until it first runs, so start it once
+#      in the background (headless) to create it.
+#   3. The parts that need admin rights, done here so nothing asks for a
+#      password: the script loader and app icon in Zen.app, and the almost-arc
+#      command in /usr/local/bin.
+#   4. The rest as the logged-in user: the curl installer with the release
+#      file this package carries (~/.almost-arc, the almost-arc command,
+#      install.sh into the profile).
+#   5. Clear Zen's startup cache (same as about:support > Clear startup cache).
+#
+# Log: /var/log/install.log (Installer > Window > Installer Log).
+
+set -uo pipefail
+PKGDIR="/Library/Application Support/Almost Arc/pkg"
+APP=/Applications/Zen.app
+ZEN_DMG="https://github.com/zen-browser/desktop/releases/latest/download/zen.macos-universal.dmg"
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+say() { echo "almost-arc: $*"; }
+U="$(stat -f%Su /dev/console)"
+UID_="$(id -u "$U" 2>/dev/null || true)"
+as_user() { launchctl asuser "$UID_" sudo -u "$U" -H env PATH="$PATH" "$@"; }
+fail() {
+  say "error: $1"
+  as_user osascript -e "display dialog \"$1\" with title \"Almost Arc for Zen\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1 || true
+  exit 1
+}
+[ -n "$U" ] && [ "$U" != root ] && [ "$U" != loginwindow ] && [ -n "$UID_" ] \
+  || fail "Log in to your Mac account, then run the installer again."
+H="$(dscl . -read "/Users/$U" NFSHomeDirectory | awk '{print $2}')"
+[ -d "$H" ] || fail "Couldn't find your home folder."
+
+VERSION="$(cat "$PKGDIR/VERSION")"
+TARBALL="$PKGDIR/almost-arc-$VERSION.tar.gz"
+tmp="$(mktemp -d)"
+cleanup() { hdiutil detach -quiet "$tmp/mnt" >/dev/null 2>&1; rm -rf "$tmp"; rm -rf "$PKGDIR"; }
+trap cleanup EXIT
+
+# ---- 1. Zen ------------------------------------------------------------------
+if [ ! -d "$APP" ]; then
+  say "Zen isn't installed: downloading it from Zen's GitHub releases"
+  curl -fsSL --retry 3 "$ZEN_DMG" -o "$tmp/zen.dmg" \
+    || fail "Couldn't download Zen. Check your internet connection and run the installer again."
+  mkdir "$tmp/mnt"
+  hdiutil attach -quiet -nobrowse -readonly -mountpoint "$tmp/mnt" "$tmp/zen.dmg" \
+    || fail "Couldn't open the Zen download. Run the installer again."
+  src="$(find "$tmp/mnt" -maxdepth 1 -name '*.app' | head -n 1)"
+  [ -n "$src" ] || fail "The Zen download didn't contain the app."
+  codesign --verify --deep --strict "$src" \
+    || fail "The Zen download failed its signature check, so it wasn't installed."
+  say "Zen: $(defaults read "$src/Contents/Info" CFBundleIdentifier 2>/dev/null) $(defaults read "$src/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
+  ditto "$src" "$APP" || fail "Couldn't copy Zen to Applications."
+  chown -R "$U":admin "$APP"          # like a drag install: Zen can update itself
+  hdiutil detach -quiet "$tmp/mnt"
+fi
+
+# ---- 2. a Zen profile ----------------------------------------------------------
+ZR="$H/Library/Application Support/zen"
+has_profile() {
+  [ -f "$ZR/profiles.ini" ] &&
+    awk -F= '/^\[Install/{f=1} f&&/^Default=/{ok=1} END{exit !ok}' "$ZR/profiles.ini"
+}
+if ! has_profile; then
+  say "No Zen profile yet: starting Zen once in the background to create it"
+  as_user "$APP/Contents/MacOS/zen" --headless about:blank >/dev/null 2>&1 &
+  for _ in $(seq 1 40); do has_profile && break; sleep 1; done
+  sleep 3                                  # let it finish writing the profile
+  pkill -TERM -u "$U" -x zen 2>/dev/null
+  for _ in $(seq 1 10); do pgrep -u "$U" -x zen >/dev/null || break; sleep 1; done
+  pkill -KILL -u "$U" -x zen 2>/dev/null
+  has_profile || fail "Zen didn't create a profile. Open Zen once, quit it, then run the installer again."
+fi
+
+# ---- 3. admin parts --------------------------------------------------------------
+mkdir "$tmp/app"
+tar -xzf "$TARBALL" -C "$tmp/app" --strip-components 1 || fail "The installer is damaged. Download it again."
+RES="$APP/Contents/Resources"
+if [ ! -f "$RES/config.js" ]; then
+  say "Adding the script loader to Zen"
+  { cp "$tmp/app/vendor/fx-autoconfig/program/config.js" "$RES/" &&
+    mkdir -p "$RES/defaults/pref" &&
+    cp "$tmp/app/vendor/fx-autoconfig/program/defaults/pref/config-prefs.js" "$RES/defaults/pref/"; } \
+    || fail "macOS didn't allow changes to Zen. Run the installer again; if it keeps failing, use the Terminal install at almostarc.net."
+fi
+if [ "$(osascript -l JavaScript -e 'function run(a) { ObjC.import("AppKit");
+      var img = $.NSImage.alloc.initWithContentsOfFile(a[0]);
+      return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, a[1], 0); }' \
+      "$tmp/app/assets/app-icon.png" "$APP" 2>/dev/null)" = true ]; then
+  say "Set the Almost Arc icon on Zen"
+fi
+CMD="$H/.almost-arc/bin/almost-arc"
+LINK=/usr/local/bin/almost-arc
+mkdir -p /usr/local/bin
+if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then
+  fail "$LINK already exists and isn't from Almost Arc. Remove it and run the installer again."
+fi
+ln -sf "$CMD" "$LINK"
+
+# ---- 4. as you -------------------------------------------------------------------
+say "Installing Almost Arc $VERSION for $U"
+as_user env ALMOST_ARC_TARBALL="$TARBALL" ALMOST_ARC_VERSION="$VERSION" ALMOST_ARC_ICON=0 \
+  bash "$PKGDIR/install.sh" \
+  || fail "Almost Arc couldn't be installed into Zen. Details: Installer > Window > Installer Log."
+
+# ---- 5. startup cache -------------------------------------------------------------
+rm -rf "$H/Library/Caches/zen/Profiles/"*/startupCache 2>/dev/null
+say "done"
+exit 0

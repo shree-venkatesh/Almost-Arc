@@ -17,6 +17,21 @@ Makes Zen Browser look and feel almost like Arc.
 
 Built and tested on **Zen 1.24.1b (Firefox 159), macOS**.
 
+## Install with the installer (macOS)
+
+The easiest way: no Terminal, no Homebrew.
+
+1. Download **Almost-Arc-for-Zen-X.Y.Z.pkg** from the [latest release](https://github.com/shree-venkatesh/Almost-Arc/releases/latest).
+2. Open it. macOS may say it can't verify the developer (the installer isn't signed yet): open **System Settings → Privacy & Security** and click **Open Anyway**.
+3. Click through. If Zen is open, the installer asks to quit it (your windows and tabs are saved as usual).
+4. Open Zen.
+
+If you don't have Zen yet, the installer downloads it from [Zen's own releases](https://github.com/zen-browser/desktop/releases) first. It also adds the same `almost-arc` command as the Terminal install below, so later:
+
+- **After a Zen update:** open the installer again, or run `almost-arc install`.
+- **Update Almost Arc:** `almost-arc update`, or download and open the newest installer.
+- **Remove:** `almost-arc uninstall`.
+
 ## Install with Sine
 
 1. Install [Sine](https://github.com/CosmoCreeper/Sine).
@@ -97,6 +112,7 @@ To remove: `./uninstall.sh`.
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `assets/app-icon.png` | The Zen app icon `install.sh` sets on macOS |
 | `vendor/fx-autoconfig/` | Script loader used by `install.sh` |
+| `pkg/` | The macOS installer (.pkg): `pkg/build.sh`, its install scripts and pages |
 | `tests/` | Tests for auto-PiP and the notices: `node --test 'tests/*.test.mjs'` (Node 22) |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |
 

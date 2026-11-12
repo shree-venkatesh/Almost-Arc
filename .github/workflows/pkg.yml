@@ -1,0 +1,98 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# "Almost Arc for Zen" .pkg (pkg/): builds it on macOS, installs it on the
+# runner (which has no Zen, so this also tests downloading the official Zen
+# and creating a profile), checks the result, installs again over it.
+#   - pushes that touch the installer, and manual runs: build + test
+#   - every Release / pre-release: build + test, then attach the .pkg to it
+
+name: macOS installer
+
+on:
+  push:
+    paths: [pkg/**, site/install.sh, install.sh, .github/workflows/pkg.yml]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach (empty: build the current commit, attach nothing)"
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: pkg-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pkg:
+    runs-on: macos-latest
+    permissions:
+      contents: write   # attach the .pkg to the release
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.sha }}
+
+      - name: Build
+        run: |
+          if [ -n "$TAG" ]; then VERSION="${TAG#v}"; else
+            VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' theme.json | head -1)"; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          git archive --format=tar --prefix="almost-arc-$VERSION/" HEAD | gzip -n -9 > "almost-arc-$VERSION.tar.gz"
+          pkg/build.sh "$VERSION" "almost-arc-$VERSION.tar.gz" "Almost-Arc-for-Zen-$VERSION.pkg"
+
+      - name: Install (fresh Mac, no Zen)
+        run: |
+          echo "console user: $(stat -f%Su /dev/console), me: $(whoami)"
+          [ ! -d /Applications/Zen.app ] || echo "note: Zen already on the runner"
+          sudo installer -pkg "Almost-Arc-for-Zen-$VERSION.pkg" -target / -verboseR || status=$?
+          echo "---- installer log ----"; grep -E 'almost-arc|preinstall|postinstall' /var/log/install.log | tail -n 60 || true
+          exit "${status:-0}"
+
+      - name: Check
+        run: |
+          set -x
+          R=/Applications/Zen.app/Contents/Resources
+          test -f "$R/config.js"
+          test -f "$R/defaults/pref/config-prefs.js"
+          codesign --verify /Applications/Zen.app/Contents/MacOS/zen
+          P="$HOME/Library/Application Support/zen"
+          REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$P/profiles.ini")"
+          C="$P/$REL/chrome"
+          test -f "$C/almost-arc.css"
+          grep -q almost-arc.css "$C/userChrome.css"
+          for f in arcAutoPip arcNotices arcUrlbarFit arcTabUndo; do test -f "$C/JS/$f.uc.js"; done
+          test -d "$C/utils"
+          grep -q '>>> almost-arc' "$P/$REL/user.js"
+          cat "$C/almost-arc-install.json"
+          grep -q "\"version\": \"$VERSION\"" "$C/almost-arc-install.json"
+          grep -q '"method": "cli"' "$C/almost-arc-install.json"
+          test "$(stat -f%Su "$C/almost-arc.css")" = "$(whoami)"     # not owned by root
+          test "$(stat -f%Su /Applications/Zen.app)" = "$(whoami)"   # Zen can update itself
+          test -L /usr/local/bin/almost-arc
+          almost-arc --version | grep -q "$VERSION"
+          ls -la@ /Applications/Zen.app | head -5
+          ! pgrep -x zen   # the profile-creating Zen run was stopped
+
+      - name: Install again (update over an existing install)
+        run: |
+          sudo installer -pkg "Almost-Arc-for-Zen-$VERSION.pkg" -target /
+          almost-arc --version | grep -q "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Almost-Arc-for-Zen-${{ env.VERSION }}
+          path: Almost-Arc-for-Zen-*.pkg
+
+      - name: Attach to the release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "Almost-Arc-for-Zen-$VERSION.pkg" --clobber

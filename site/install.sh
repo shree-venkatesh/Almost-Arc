@@ -11,6 +11,9 @@
 # command (install / update / uninstall / --version) to /usr/local/bin,
 # then runs the release's own install.sh. Rerunning it updates.
 #
+# The .pkg installer runs this too, with ALMOST_ARC_TARBALL / ALMOST_ARC_VERSION
+# set to the release file it carries, so nothing is downloaded.
+#
 # Everything is inside main(), which runs on the last line, so a cut-off
 # download can never run half a script.
 
@@ -56,8 +59,11 @@ main() {
   fi
 
   # ---- find the latest release (or, with --beta, the latest tag) -----------
-  local tag label=""
-  if [ "$beta" = 1 ]; then
+  local tag label="" version
+  if [ -n "${ALMOST_ARC_TARBALL:-}" ]; then
+    version="${ALMOST_ARC_VERSION:?ALMOST_ARC_VERSION is needed with ALMOST_ARC_TARBALL}"
+    tag="v$version"
+  elif [ "$beta" = 1 ]; then
     # newest vX.Y.Z tag; tags that never became a Release are the beta channel
     tag="$(curl -fsSL "https://api.github.com/repos/$REPO/tags?per_page=100")" \
       || fail "couldn't reach GitHub."
@@ -71,20 +77,22 @@ main() {
     tag="${tag##*/}"
     case "$tag" in v[0-9]*) ;; *) fail "couldn't find the latest release." ;; esac
   fi
-  local version="${tag#v}"
+  version="${tag#v}"
 
   # ---- download it into ~/.almost-arc/app ----------------------------------
-  say "Downloading Almost Arc $version$label..."
+  [ -n "${ALMOST_ARC_TARBALL:-}" ] || say "Downloading Almost Arc $version$label..."
   mkdir -p "$ROOT/bin"
   local tmp; tmp="$(mktemp -d)"
   # shellcheck disable=SC2064  # expand now: $tmp is local and gone by the time EXIT fires
   trap "rm -rf '$tmp'" EXIT
   # The release file (GitHub counts its downloads); a tag without one (an older
   # version, or a bare tag with --beta) falls back to GitHub's source archive.
+  if [ -n "${ALMOST_ARC_TARBALL:-}" ]; then cp "$ALMOST_ARC_TARBALL" "$tmp/release.tar.gz"; else
   curl -fsSL "https://github.com/$REPO/releases/download/$tag/almost-arc-$version.tar.gz" \
        -o "$tmp/release.tar.gz" 2>/dev/null \
     || curl -fsSL "https://github.com/$REPO/archive/refs/tags/$tag.tar.gz" -o "$tmp/release.tar.gz" \
     || fail "download failed."
+  fi
   mkdir "$tmp/app"
   tar -xzf "$tmp/release.tar.gz" -C "$tmp/app" --strip-components 1
   [ -x "$tmp/app/install.sh" ] || fail "the download doesn't look like an Almost Arc release."
