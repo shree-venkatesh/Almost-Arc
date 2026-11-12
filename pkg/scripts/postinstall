@@ -58,13 +58,18 @@ if [ ! -d "$APP" ]; then
     || fail "Couldn't open the Zen download. Run the installer again."
   src="$(find "$tmp/mnt" -maxdepth 1 -name '*.app' | head -n 1)"
   [ -n "$src" ] || fail "The Zen download didn't contain the app."
-  # Signed by a Developer ID (how notarized apps like Zen are signed) and intact.
-  # (Not --strict: it rejects the Finder metadata a mounted disk image adds.)
-  codesign --verify --deep "$src" &&
-    codesign -dv --verbose=2 "$src" 2>&1 | grep -q '^Authority=Developer ID Application' \
-    || fail "The Zen download failed its signature check, so it wasn't installed."
-  say "Zen: $(defaults read "$src/Contents/Info" CFBundleIdentifier 2>/dev/null) $(defaults read "$src/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
-  ditto "$src" "$APP" || fail "Couldn't copy Zen to Applications."
+  # Copy it off the disk image without Finder metadata (which fails codesign's
+  # checks), verify the copy, and only then put it in Applications.
+  ditto --noextattr --noqtn "$src" "$tmp/Zen.app" || fail "Couldn't copy Zen from the download."
+  # Intact, and signed by a Developer ID (how notarized apps like Zen are signed)
+  if ! out="$(codesign --verify --deep --strict "$tmp/Zen.app" 2>&1)" ||
+     ! codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+    say "codesign: $out"
+    codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Identifier)=' | sed 's/^/almost-arc: /'
+    fail "The Zen download failed its signature check, so it wasn't installed."
+  fi
+  say "Zen: $(defaults read "$tmp/Zen.app/Contents/Info" CFBundleIdentifier 2>/dev/null) $(defaults read "$tmp/Zen.app/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
+  mv "$tmp/Zen.app" "$APP" || fail "Couldn't move Zen to Applications."
   chown -R "$U":admin "$APP"          # like a drag install: Zen can update itself
   hdiutil detach -quiet "$tmp/mnt"
 fi
