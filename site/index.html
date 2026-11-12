@@ -254,6 +254,9 @@ code { font: 12.5px var(--mono); background: var(--chip); padding: 2px 6px; bord
 .qa { border-top: 1px solid var(--rule); padding: 18px 0; }
 .qa:last-child { border-bottom: 1px solid var(--rule); }
 .qa p { color: var(--dim); font-size: 15px; margin: 0; }
+.steps { margin: 10px 0 0; padding-left: 22px; color: var(--dim); font-size: 15px; }
+.steps li { margin: 4px 0; padding-left: 2px; }
+.steps li::marker { color: var(--faint); font-weight: 600; }
 
 .fine { margin-top: 48px; font-size: 13px; color: var(--faint); }
 
@@ -386,7 +389,13 @@ code { font: 12.5px var(--mono); background: var(--chip); padding: 2px 6px; bord
 
         <div id="install-pkg" hidden>
           <p class="label">The installer (easiest)</p>
-          <p>Download <a id="download-2" href="https://github.com/shree-venkatesh/Almost-Arc/releases/latest" data-goatcounter-click="download-pkg-install" data-goatcounter-title="Downloaded the installer (Install tab)">the installer</a>, open it and click through. If macOS says it can't verify the developer, open System Settings, then Privacy &amp; Security, and click <b>Open Anyway</b>.</p>
+          <p>Download <a id="download-2" href="https://github.com/shree-venkatesh/Almost-Arc/releases/latest" data-goatcounter-click="download-pkg-install" data-goatcounter-title="Downloaded the installer (Install tab)">the installer</a>, open it and click through. The installer isn't signed by Apple yet, so the first time:</p>
+          <ol class="steps">
+            <li>Open it. When macOS says it can't verify it, click <b>Done</b> (not Move to Trash).</li>
+            <li>Open <b>System Settings</b>, then <b>Privacy &amp; Security</b>.</li>
+            <li><b>Scroll down</b> to the <b>Security</b> section and click <b>Open Anyway</b> next to the installer's name.</li>
+            <li>Enter your password and click <b>Open</b>.</li>
+          </ol>
         </div>
 
         <p class="label">Homebrew</p>
@@ -427,7 +436,12 @@ code { font: 12.5px var(--mono); background: var(--chip); padding: 2px 6px; bord
         <p class="sub">The usual questions.</p>
         <div class="qa"><h3>Zen updated and the mod looks half gone</h3><p>Zen's updates remove the part of the mod that lives in the app. Zen shows a notice when that happens: run <code>almost-arc install</code>, or open the installer again.</p></div>
         <div class="qa"><h3>How do I update Almost Arc?</h3><p>Click <b>Update</b> on the bar Zen shows when a new version is out, or run <code>almost-arc update</code>.</p></div>
-        <div class="qa"><h3>macOS says it can't verify the developer</h3><p>The installer isn't signed by Apple yet. Open System Settings, then Privacy &amp; Security, and click <b>Open Anyway</b>.</p></div>
+        <div class="qa"><h3>macOS says it can't verify the installer</h3><p>The installer isn't signed by Apple yet. Click <b>Done</b> on the message, then:</p>
+          <ol class="steps">
+            <li>Open <b>System Settings</b>, then <b>Privacy &amp; Security</b>.</li>
+            <li><b>Scroll down</b> to the <b>Security</b> section and click <b>Open Anyway</b> next to the installer's name.</li>
+            <li>Enter your password and click <b>Open</b>.</li>
+          </ol></div>
         <div class="qa"><h3>How do I remove it?</h3><p>Run <code>almost-arc uninstall</code>. Zen goes back to how it was, including its icon.</p></div>
         <div class="qa"><h3>Does it work on Windows or Linux?</h3><p>It's built for Zen on macOS. Linux mostly works with <code>./install.sh</code>; Windows isn't supported.</p></div>
         <div class="qa"><h3>Something else?</h3><p><a href="https://github.com/shree-venkatesh/Almost-Arc/issues">Open an issue on GitHub</a>.</p></div>

@@ -22,7 +22,11 @@ Built and tested on **Zen 1.24.1b (Firefox 159), macOS**.
 The easiest way: no Terminal, no Homebrew.
 
 1. Download **Almost-Arc-for-Zen-X.Y.Z.pkg** from the [latest release](https://github.com/shree-venkatesh/Almost-Arc/releases/latest).
-2. Open it. macOS may say it can't verify the developer (the installer isn't signed yet): open **System Settings → Privacy & Security** and click **Open Anyway**.
+2. Open it. The installer isn't signed by Apple yet, so the first time macOS says it can't verify it:
+   1. Click **Done** (not Move to Trash).
+   2. Open **System Settings → Privacy & Security**.
+   3. **Scroll down** to the **Security** section and click **Open Anyway** next to the installer's name.
+   4. Enter your password and click **Open**.
 3. Click through. If Zen is open, the installer asks to quit it (your windows and tabs are saved as usual).
 4. Open Zen.
 
