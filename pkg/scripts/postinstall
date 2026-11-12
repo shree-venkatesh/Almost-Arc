@@ -6,11 +6,9 @@
 # Almost Arc for Zen .pkg: runs as root after the payload (the release file
 # and the curl installer) lands in $PKGDIR.
 #
-#   1. Zen: if it isn't installed, download the official Zen from Zen's own
-#      GitHub releases (signature checked) and install it. Zen stays Zen's
-#      product: unmodified apart from the loader below, updating itself.
-#   2. Zen profile: a fresh Zen has none until it first runs, so start it once
-#      in the background (headless) to create it.
+#   1+2. get-zen.sh (from the release, shared with install.sh): if Zen isn't
+#      installed, the official Zen from Zen's own releases (signature checked);
+#      if there's no Zen profile, start Zen once in the background to create one.
 #   3. The parts that need admin rights, done here so nothing asks for a
 #      password: the script loader and app icon in Zen.app, and the almost-arc
 #      command in /usr/local/bin.
@@ -24,8 +22,6 @@
 set -uo pipefail
 PKGDIR="/Library/Application Support/Almost Arc/pkg"
 APP=/Applications/Zen.app
-ZEN_DMG="https://github.com/zen-browser/desktop/releases/latest/download/zen.macos-universal.dmg"
-ZEN_TEAM=9V5K9TP787        # the Apple Developer ID team that signs Zen
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 say() { echo "almost-arc: $*"; }
@@ -46,59 +42,21 @@ H="$(dscl . -read "/Users/$U" NFSHomeDirectory | awk '{print $2}')"
 VERSION="$(cat "$PKGDIR/VERSION")"
 TARBALL="$PKGDIR/almost-arc-$VERSION.tar.gz"
 tmp="$(mktemp -d)"
-cleanup() { hdiutil detach -quiet "$tmp/mnt" >/dev/null 2>&1; rm -rf "$tmp"; rm -rf "$PKGDIR"; }
+cleanup() { rm -rf "$tmp"; rm -rf "$PKGDIR"; }
 trap cleanup EXIT
 
-# ---- 1. Zen ------------------------------------------------------------------
-if [ ! -d "$APP" ]; then
-  say "Zen isn't installed: downloading it from Zen's GitHub releases"
-  curl -fsSL --retry 3 "$ZEN_DMG" -o "$tmp/zen.dmg" \
-    || fail "Couldn't download Zen. Check your internet connection and run the installer again."
-  mkdir "$tmp/mnt"
-  hdiutil attach -quiet -nobrowse -readonly -mountpoint "$tmp/mnt" "$tmp/zen.dmg" \
-    || fail "Couldn't open the Zen download. Run the installer again."
-  src="$(find "$tmp/mnt" -maxdepth 1 -name '*.app' | head -n 1)"
-  [ -n "$src" ] || fail "The Zen download didn't contain the app."
-  # Copy it off the disk image without Finder metadata (which fails codesign's
-  # checks), verify the copy, and only then put it in Applications.
-  ditto --noextattr --noqtn "$src" "$tmp/Zen.app" || fail "Couldn't copy Zen from the download."
-  xattr -cr "$tmp/Zen.app" 2>/dev/null
-  # Intact, and signed by Zen's own Developer ID team
-  # (Read codesign's details into a variable first: piping it into grep -q
-  # under pipefail fails at random, when grep stops reading early.)
-  sig="$(codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1)"
-  if ! out="$(codesign --verify --deep "$tmp/Zen.app" 2>&1)" ||
-     ! printf '%s\n' "$sig" | grep -x "TeamIdentifier=$ZEN_TEAM" >/dev/null; then
-    say "codesign: $out"
-    printf '%s\n' "$sig" | grep -E '^(Authority|TeamIdentifier|Identifier)=' | sed 's/^/almost-arc: /'
-    fail "The Zen download failed its signature check, so it wasn't installed."
-  fi
-  say "Zen: $(defaults read "$tmp/Zen.app/Contents/Info" CFBundleIdentifier 2>/dev/null) $(defaults read "$tmp/Zen.app/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
-  mv "$tmp/Zen.app" "$APP" || fail "Couldn't move Zen to Applications."
-  chown -R "$U":admin "$APP"          # like a drag install: Zen can update itself
-  hdiutil detach -quiet "$tmp/mnt"
-fi
-
-# ---- 2. a Zen profile ----------------------------------------------------------
-ZR="$H/Library/Application Support/zen"
-has_profile() {
-  [ -f "$ZR/profiles.ini" ] &&
-    awk -F= '/^\[Install/{f=1} f&&/^Default=/{ok=1} END{exit !ok}' "$ZR/profiles.ini"
-}
-if ! has_profile; then
-  say "No Zen profile yet: starting Zen once in the background to create it"
-  as_user "$APP/Contents/MacOS/zen" --headless about:blank >/dev/null 2>&1 &
-  for _ in $(seq 1 40); do has_profile && break; sleep 1; done
-  sleep 3                                  # let it finish writing the profile
-  pkill -TERM -u "$U" -x zen 2>/dev/null
-  for _ in $(seq 1 10); do pgrep -u "$U" -x zen >/dev/null || break; sleep 1; done
-  pkill -KILL -u "$U" -x zen 2>/dev/null
-  has_profile || fail "Zen didn't create a profile. Open Zen once, quit it, then run the installer again."
+# ---- 1 + 2. Zen and a profile (get-zen.sh, shared with install.sh) ------------
+mkdir "$tmp/app"
+tar -xzf "$TARBALL" -C "$tmp/app" --strip-components 1 || fail "The installer is damaged. Download it again."
+out="$("$tmp/app/get-zen.sh" "$U" 2>&1)"; status=$?
+printf '%s\n' "$out" | sed 's/^/almost-arc: /'
+if [ "$status" -ne 0 ]; then
+  msg="$(printf '%s\n' "$out" | sed -n 's/^Error: //p' | tail -n 1)"
+  [ -n "$msg" ] || msg="Couldn't set up Zen. Details: Installer > Window > Installer Log."
+  fail "$msg"
 fi
 
 # ---- 3. admin parts --------------------------------------------------------------
-mkdir "$tmp/app"
-tar -xzf "$TARBALL" -C "$tmp/app" --strip-components 1 || fail "The installer is damaged. Download it again."
 RES="$APP/Contents/Resources"
 if [ ! -f "$RES/config.js" ]; then
   say "Adding the script loader to Zen"

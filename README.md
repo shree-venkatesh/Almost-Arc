@@ -47,7 +47,7 @@ brew install shree-venkatesh/tap/almost-arc
 almost-arc install
 ```
 
-Quit Zen before running `almost-arc install`. It runs the same `install.sh` described below, so the same steps apply: clear the startup cache afterwards, and rerun `almost-arc install` after every Zen update.
+Quit Zen before running `almost-arc install`. It runs the same `install.sh` described below, so the same steps apply: if you don't have Zen yet it installs it first, clear the startup cache afterwards, and rerun `almost-arc install` after every Zen update.
 
 - **Update:** quit Zen, then `almost-arc update` (runs `brew update`, `brew upgrade almost-arc` and `almost-arc install`).
 - **Remove:** `almost-arc uninstall`, then `brew uninstall almost-arc`.
@@ -59,7 +59,7 @@ Quit Zen before running `almost-arc install`. It runs the same `install.sh` desc
 curl -fsSL https://almostarc.net/install.sh | bash
 ```
 
-Quit Zen first. This downloads the latest release into `~/.almost-arc`, adds the same `almost-arc` command to `/usr/local/bin` (it may ask for your password), and installs. Don't mix the two installs: the curl installer stops if Almost Arc is already installed with Homebrew, and the Homebrew `almost-arc` stops if it was installed with curl.
+Quit Zen first. If you don't have Zen yet, it installs it first (see below). This downloads the latest release into `~/.almost-arc`, adds the same `almost-arc` command to `/usr/local/bin` (it may ask for your password), and installs. Don't mix the two installs: the curl installer stops if Almost Arc is already installed with Homebrew, and the Homebrew `almost-arc` stops if it was installed with curl.
 
 - **After a Zen update:** `almost-arc install`.
 - **Update Almost Arc:** `almost-arc update`.
@@ -76,6 +76,7 @@ cd Almost-Arc
 
 Quit Zen first. The script then:
 
+- **Installs Zen if you don't have it** (macOS): downloads the official Zen from [Zen's own releases](https://github.com/zen-browser/desktop/releases), checks it's signed by the Zen team, puts it in Applications, and starts it once in the background so it creates your profile.
 - **Adds a small script loader** ([fx-autoconfig](https://github.com/MrOtherGuy/fx-autoconfig), included in `vendor/`) to the Zen app. It may ask for your password.
 - **Adds the styles** to your profile's `chrome/` folder as `almost-arc.css`, imported from `userChrome.css`. Your existing CSS is kept.
 - **Adds the scripts** to `chrome/JS/`.
@@ -115,6 +116,7 @@ To remove: `./uninstall.sh`.
 | `pkg/` | The macOS installer (.pkg): `pkg/build.sh`, its install scripts and pages |
 | `tests/` | Tests for auto-PiP and the notices: `node --test 'tests/*.test.mjs'` (Node 22) |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |
+| `get-zen.sh` | Installs the official Zen if it's missing, and creates a profile (macOS; used by `install.sh` and the installer) |
 
 ## Settings
 

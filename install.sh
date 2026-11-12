@@ -14,6 +14,14 @@ case "$(uname)" in
   *) echo "Unsupported OS. Set ZEN_PROFILE and ZEN_APP and rerun."; exit 1 ;;
 esac
 
+# No Zen, or a Zen that has never been opened (no profile): get-zen.sh installs
+# the official Zen and creates a profile. Only for the default locations.
+if [ "$(uname)" = Darwin ] && [ -z "${ZEN_PROFILE:-}" ] && [ "$ZEN_APP" = /Applications/Zen.app/Contents/Resources ] &&
+   { [ ! -d "$ZEN_APP" ] || ! awk -F= '/^\[Install/{f=1} f&&/^Default=/{ok=1} END{exit !ok}' "$ZEN_ROOT/profiles.ini" 2>/dev/null; }; then
+  "$HERE/get-zen.sh" || exit 1
+  echo
+fi
+
 if [ -z "${ZEN_PROFILE:-}" ]; then
   REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$ZEN_ROOT/profiles.ini")"
   ZEN_PROFILE="$ZEN_ROOT/$REL"

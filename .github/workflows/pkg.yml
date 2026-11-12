@@ -2,9 +2,11 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-# "Almost Arc for Zen" .pkg (pkg/): builds it on macOS, installs it on the
-# runner (which has no Zen, so this also tests downloading the official Zen
-# and creating a profile), checks the result, installs again over it.
+# macOS installs on fresh runners (no Zen, so both also test get-zen.sh:
+# downloading the official Zen and creating a profile):
+#   pkg       "Almost Arc for Zen" .pkg (pkg/): build, install, check, install
+#             again over it; attached to every Release / pre-release
+#   terminal  ./install.sh, what Homebrew, curl and git clone all run
 #   - pushes that touch the installer, and manual runs: build + test
 #   - every Release / pre-release: build + test, then attach the .pkg to it
 #   - weekly (Monday): build + test, to catch Zen changing its download
@@ -14,7 +16,7 @@ name: macOS installer
 
 on:
   push:
-    paths: [pkg/**, site/install.sh, install.sh, .github/workflows/pkg.yml]
+    paths: [pkg/**, site/install.sh, install.sh, get-zen.sh, .github/workflows/pkg.yml]
   release:
     types: [published]
   schedule:
@@ -107,3 +109,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" "Almost-Arc-for-Zen-$VERSION.pkg" --clobber
+
+  terminal:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.sha }}
+
+      - name: ./install.sh on a fresh Mac (no Zen)
+        run: |
+          [ ! -d /Applications/Zen.app ] || echo "note: Zen already on the runner"
+          ./install.sh
+
+      - name: Check
+        run: |
+          set -x
+          codesign -dv /Applications/Zen.app 2>&1 | grep -x 'TeamIdentifier=9V5K9TP787'
+          test "$(stat -f%Su /Applications/Zen.app)" = "$(whoami)"
+          test -f /Applications/Zen.app/Contents/Resources/config.js
+          P="$HOME/Library/Application Support/zen"
+          REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$P/profiles.ini")"
+          test -f "$P/$REL/chrome/almost-arc.css"
+          test -f "$P/$REL/chrome/JS/arcAutoPip.uc.js"
+          ! pgrep -x zen
+
+      - name: ./install.sh again (Zen already there)
+        run: ./install.sh | tee out.txt && ! grep -q "downloading it" out.txt
