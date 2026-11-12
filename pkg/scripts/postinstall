@@ -33,7 +33,8 @@ UID_="$(id -u "$U" 2>/dev/null || true)"
 as_user() { launchctl asuser "$UID_" sudo -u "$U" -H env PATH="$PATH" "$@"; }
 fail() {
   say "error: $1"
-  as_user osascript -e "display dialog \"$1\" with title \"Almost Arc for Zen\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1 || true
+  # closes itself after 2 minutes, so the installer never waits on it forever
+  as_user osascript -e "display dialog \"$1\" with title \"Almost Arc for Zen\" buttons {\"OK\"} default button 1 with icon caution giving up after 120" >/dev/null 2>&1 || true
   exit 1
 }
 [ -n "$U" ] && [ "$U" != root ] && [ "$U" != loginwindow ] && [ -n "$UID_" ] \
@@ -57,7 +58,10 @@ if [ ! -d "$APP" ]; then
     || fail "Couldn't open the Zen download. Run the installer again."
   src="$(find "$tmp/mnt" -maxdepth 1 -name '*.app' | head -n 1)"
   [ -n "$src" ] || fail "The Zen download didn't contain the app."
-  codesign --verify --deep --strict "$src" \
+  # Signed by a Developer ID (how notarized apps like Zen are signed) and intact.
+  # (Not --strict: it rejects the Finder metadata a mounted disk image adds.)
+  codesign --verify --deep "$src" &&
+    codesign -dv --verbose=2 "$src" 2>&1 | grep -q '^Authority=Developer ID Application' \
     || fail "The Zen download failed its signature check, so it wasn't installed."
   say "Zen: $(defaults read "$src/Contents/Info" CFBundleIdentifier 2>/dev/null) $(defaults read "$src/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
   ditto "$src" "$APP" || fail "Couldn't copy Zen to Applications."
