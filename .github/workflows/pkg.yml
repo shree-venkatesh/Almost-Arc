@@ -7,6 +7,8 @@
 # and creating a profile), checks the result, installs again over it.
 #   - pushes that touch the installer, and manual runs: build + test
 #   - every Release / pre-release: build + test, then attach the .pkg to it
+#   - weekly (Monday): build + test, to catch Zen changing its download
+#     (file name, signing team) before a new user hits it
 
 name: macOS installer
 
@@ -15,6 +17,8 @@ on:
     paths: [pkg/**, site/install.sh, install.sh, .github/workflows/pkg.yml]
   release:
     types: [published]
+  schedule:
+    - cron: "17 14 * * 1"   # Mondays 14:17 UTC
   workflow_dispatch:
     inputs:
       tag:
