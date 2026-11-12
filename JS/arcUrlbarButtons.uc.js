@@ -38,6 +38,21 @@
 
   window.__arcPlaceUrlButtons = () => place();
 
+  // Copy-link confirmation, like Arc: the copy button shows a checkmark for a
+  // moment. Covers the button and Cmd+Shift+C (both run cmd_zenCopyCurrentURL).
+  // Zen's own "Copied" toast (with Share) still shows.
+  let copiedTimer = 0;
+  function copied() {
+    const btn = document.getElementById("zen-copy-url-button");
+    if (!btn) return;
+    btn.removeAttribute("arc-copied");
+    btn.getBoundingClientRect();   // restart the animation on a quick second copy
+    btn.setAttribute("arc-copied", "true");
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => btn.removeAttribute("arc-copied"), 1500);
+  }
+  document.getElementById("cmd_zenCopyCurrentURL")?.addEventListener("command", copied);
+
   function run() {
     if (!place()) return false;
     // Re-apply if Zen/CustomizableUI rebuilds the toolbar (layout switch, customize mode)

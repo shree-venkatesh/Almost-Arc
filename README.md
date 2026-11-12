@@ -5,14 +5,14 @@ Makes Zen Browser look and feel almost like Arc.
 - **Toolbar is the top of the page card.** Rounded top corners, the card's shadow, a full-height sidebar beside it, and square corners in borderless fullscreen.
 - **Toolbar color matches the page.** It's sampled from the page's top edge once each page has loaded. New tabs and other transparent pages get a frosted tint over your space gradient.
 - **Centered URL pill** sized to its text: the domain is bright and the path dimmed, with a highlight on hover. Clicking it opens Zen's floating address bar, like Arc's command bar, and clicking again closes it. The pill itself never moves. A URL too long for the pill is cut at its end with a single `…` (`google.com/sea…`).
-- **Copy-link button** sits right next to the pill. **Site settings / extensions** moves to the right side of the toolbar.
+- **Copy-link button** sits right next to the pill and shows a checkmark when you copy (the button or Cmd+Shift+C). **Site settings / extensions** moves to the right side of the toolbar.
 - **Arc-style essentials tiles:** light, frosted tiles, and an outlined tile for the selected one.
 - **Hidden-sidebar (compact) mode works like Arc.** The pop-out sidebar runs full height with the window buttons at its top, and a sidebar button starts the toolbar.
 - **Auto Picture-in-Picture like Arc:** a playing video pops out when you switch tabs, minimize, or switch to another app or desktop, and closes when you come back. Spotlight, screenshots and Control Center don't trigger it, and neither does clicking an app that doesn't cover Zen's window, such as one on another monitor. App and desktop switching is macOS only.
 - **Arc's PiP controls:** **Back to Tab**, the site's domain, **Minimize** (closes PiP and keeps the video playing, so you still hear it) and **Close** across the top; a big play/pause with 15-second skips in the middle; a slim progress bar at the bottom. Firefox's volume controls stay, bottom right.
 - **Flick PiP into a corner:** swipe with two fingers over the Picture-in-Picture window and it glides to the screen corner in that direction. Click and drag still puts it anywhere.
 - **Cmd+Z undoes your tab changes** from the current session: reopens closed tabs (back into their folder or Essentials), and puts moved and pinned or unpinned tabs back. Text fields keep their normal undo. See [Tab undo safeguards](#tab-undo-safeguards).
-- **Tells you when something needs doing:** if a Zen update removed the script loader, a notice at the bottom of the window says to rerun `almost-arc install`. When a new Almost Arc release is out, a bar at the top says so, with the command to update (install script, Homebrew and curl installs; Sine updates mods itself). It checks GitHub at most once a day.
+- **Tells you when something needs doing:** if a Zen update removed the script loader, a notice at the bottom of the window says to rerun `almost-arc install`. When a new Almost Arc release is out, a bar at the top says so, with the command to update (install script, Homebrew and curl installs; Sine updates mods itself). If you installed with `--beta`, it also tells you about newer betas. It checks GitHub at most once a day.
 - **Optional:** show only the domain in the URL pill.
 
 Built and tested on **Zen 1.24.1b (Firefox 159), macOS**.
@@ -97,7 +97,7 @@ To remove: `./uninstall.sh`.
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `assets/app-icon.png` | The Zen app icon `install.sh` sets on macOS |
 | `vendor/fx-autoconfig/` | Script loader used by `install.sh` |
-| `tests/` | Auto-PiP tests: `node --test 'tests/*.test.mjs'` (Node 22) |
+| `tests/` | Tests for auto-PiP and the notices: `node --test 'tests/*.test.mjs'` (Node 22) |
 | `install.sh` / `uninstall.sh` | Manual install without Sine |
 
 ## Settings

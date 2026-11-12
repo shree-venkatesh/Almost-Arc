@@ -113,8 +113,10 @@ cp "$HERE"/JS/*.uc.js "$CHROME/JS/"
 # What's installed and how to update it, for the new-release notice (arcNotices.uc.js).
 VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$HERE/theme.json" | head -1)"
 METHOD=git; command -v almost-arc >/dev/null 2>&1 && METHOD=cli
+# The almost-arc command sets ALMOST_ARC_BETA=1 for --beta installs: those get beta notices too.
+CHANNEL=release; [ "${ALMOST_ARC_BETA:-0}" = 1 ] && CHANNEL=beta
 DIR_JSON="$(printf '%s' "$HERE" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-printf '{"version": "%s", "method": "%s", "dir": "%s"}\n' "$VERSION" "$METHOD" "$DIR_JSON" > "$CHROME/almost-arc-install.json"
+printf '{"version": "%s", "method": "%s", "channel": "%s", "dir": "%s"}\n' "$VERSION" "$METHOD" "$CHANNEL" "$DIR_JSON" > "$CHROME/almost-arc-install.json"
 
 # ---- 4. prefs (user.js, managed block) ----------------------------------
 USERJS="$ZEN_PROFILE/user.js"
@@ -127,7 +129,6 @@ user_pref("zen.view.use-single-toolbar", false);
 user_pref("zen.view.compact.hide-toolbar", false);
 user_pref("zen.urlbar.behavior", "float");
 user_pref("browser.urlbar.trimWww", true);
-user_pref("browser.urlbar.formatting.enabled", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled", true);
 // <<< almost-arc

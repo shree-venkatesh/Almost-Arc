@@ -266,6 +266,18 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     background: var(--arc-url-hover-bg) !important;
   }
 }
+/* Copied: checkmark for a moment (arcUrlbarButtons.uc.js sets [arc-copied]) */
+#nav-bar #zen-copy-url-button[arc-moved][arc-copied] image {
+  list-style-image: url("chrome://global/skin/icons/check.svg") !important;
+  animation: arc-copied-pop .25s ease-out;
+}
+@keyframes arc-copied-pop {
+  from { transform: scale(.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #nav-bar #zen-copy-url-button[arc-moved][arc-copied] image { animation: none; }
+}
 #nav-bar #zen-copy-url-button[arc-moved][disabled] {
   opacity: .35 !important;
   background: transparent !important;

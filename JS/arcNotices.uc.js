@@ -2,7 +2,8 @@
 // @name           Almost Arc notices
 // @description    Marks the window so chrome.css knows the scripts loaded (it shows a
 //                 "scripts aren't running" notice otherwise), and shows a notice when a
-//                 newer Almost Arc release is out (install.sh installs only).
+//                 newer Almost Arc release is out (install.sh installs only; installs
+//                 made with --beta also hear about newer betas).
 // ==/UserScript==
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -20,8 +21,10 @@
   window.__arcNotices = true;
 
   const REPO = "shree-venkatesh/Almost-Arc";
-  const LAST = "almost-arc.update-last-check";   // seconds since epoch
-  const LATEST = "almost-arc.update-latest";     // newest release seen, "1.2.0"
+  // Release channel: newest Release. Beta channel (installed with --beta): newest tag.
+  // Each channel keeps its own cache, so switching channels checks again.
+  let LAST = "almost-arc.update-last-check";   // seconds since epoch
+  let LATEST = "almost-arc.update-latest";     // newest version seen, "1.2.0"
   const SKIP = "almost-arc.update-skip";         // "Skip this version"
   // Default-branch prefs aren't saved, so this lasts one session: one window per session shows it.
   const SHOWN = "almost-arc.update-shown-this-session";
@@ -40,30 +43,41 @@
       info = await IOUtils.readJSON(PathUtils.join(PathUtils.profileDir, "chrome", "almost-arc-install.json"));
     } catch (e) { return; }
     if (!info?.version) return;
+    const beta = info.channel === "beta";
+    if (beta) { LAST += "-beta"; LATEST += "-beta"; }
 
     const now = Math.floor(Date.now() / 1000);
     let latest = Services.prefs.getStringPref(LATEST, "");
     if (now - Services.prefs.getIntPref(LAST, 0) > 86400) {   // at most once a day
       Services.prefs.setIntPref(LAST, now);
       try {
-        const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`,
-                              { headers: { Accept: "application/vnd.github+json" } });
-        if (r.ok) {
-          const tag = String((await r.json()).tag_name || "").replace(/^v/, "");
-          if (/^\d+\.\d+\.\d+$/.test(tag)) { latest = tag; Services.prefs.setStringPref(LATEST, tag); }
+        const headers = { Accept: "application/vnd.github+json" };
+        let tag = "";
+        if (beta) {
+          const r = await fetch(`https://api.github.com/repos/${REPO}/tags?per_page=100`, { headers });
+          if (r.ok) {
+            for (const t of await r.json()) {
+              const v = String(t.name || "").replace(/^v/, "");
+              if (/^\d+\.\d+\.\d+$/.test(v) && (!tag || newer(v, tag))) tag = v;
+            }
+          }
+        } else {
+          const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers });
+          if (r.ok) tag = String((await r.json()).tag_name || "").replace(/^v/, "");
         }
+        if (/^\d+\.\d+\.\d+$/.test(tag)) { latest = tag; Services.prefs.setStringPref(LATEST, tag); }
       } catch (e) {}
     }
     if (!latest || !newer(latest, info.version)) return;
     if (Services.prefs.getStringPref(SKIP, "") === latest) return;
     if (Services.prefs.getDefaultBranch("").getBoolPref(SHOWN, false)) return;
     Services.prefs.getDefaultBranch("").setBoolPref(SHOWN, true);
-    show(latest, info);
+    show(latest, info, beta);
   }
 
-  async function show(latest, info) {
-    const cmd = info.method === "cli" ? "almost-arc update"
-                                      : `cd "${info.dir}" && git pull && ./install.sh`;
+  async function show(latest, info, beta) {
+    const cmd = info.method !== "cli" ? `cd "${info.dir}" && git pull && ./install.sh`
+              : beta ? "almost-arc update --beta" : "almost-arc update";
     try {
       const box = window.gNotificationBox || gBrowser.getNotificationBox();
       await box.appendNotification("almost-arc-update", {

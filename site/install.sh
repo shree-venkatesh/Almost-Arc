@@ -150,7 +150,7 @@ EOF
 
   # ---- install into Zen ----------------------------------------------------
   say ""
-  if "$ROOT/app/install.sh"; then
+  if ALMOST_ARC_BETA="$beta" "$ROOT/app/install.sh"; then
     say ""
     say "Later: 'almost-arc install' after a Zen update, 'almost-arc update' for a new"
     say "Almost Arc version, 'almost-arc uninstall' to remove it."
