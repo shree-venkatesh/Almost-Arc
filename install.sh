@@ -32,7 +32,9 @@ if [ -z "$ZEN_APP" ] || [ ! -d "$ZEN_APP" ]; then
   echo "(e.g. /opt/zen) and rerun."; exit 1
 fi
 
-if pgrep -xi zen >/dev/null 2>&1; then
+# ALMOST_ARC_FROM_ZEN=1: the Update button in Zen's update notice runs this while
+# Zen is open on purpose (the mod's files take effect when Zen restarts).
+if [ "${ALMOST_ARC_FROM_ZEN:-0}" != 1 ] && pgrep -xi zen >/dev/null 2>&1; then
   echo "Please quit Zen first (Cmd+Q / close all windows), then rerun."; exit 1
 fi
 
@@ -95,6 +97,8 @@ APP_BUNDLE="${ZEN_APP%/Contents/Resources}"
 if [ "$(uname)" = Darwin ] && [ "${ALMOST_ARC_ICON:-1}" != 0 ] &&
    [ "$APP_BUNDLE" != "$ZEN_APP" ] && [ -d "$APP_BUNDLE" ] && [ -f "$HERE/assets/app-icon.png" ]; then
   ISUDO=""; [ -w "$APP_BUNDLE" ] || ISUDO="sudo"
+  # From Zen's Update button there's no Terminal to type a password in
+  [ -n "$ISUDO" ] && [ "${ALMOST_ARC_FROM_ZEN:-0}" = 1 ] && ISUDO="sudo -n"
   if [ "$($ISUDO osascript -l JavaScript -e 'function run(a) { ObjC.import("AppKit");
         var img = $.NSImage.alloc.initWithContentsOfFile(a[0]);
         return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, a[1], 0); }' \

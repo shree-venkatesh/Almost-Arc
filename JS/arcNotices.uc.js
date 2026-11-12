@@ -3,7 +3,8 @@
 // @description    Marks the window so chrome.css knows the scripts loaded (it shows a
 //                 "scripts aren't running" notice otherwise), and shows a notice when a
 //                 newer Almost Arc release is out (install.sh installs only; installs
-//                 made with --beta also hear about newer betas).
+//                 made with --beta also hear about newer betas). Its Update button
+//                 runs the update in the background, then offers to restart Zen.
 // ==/UserScript==
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -75,25 +76,96 @@
     show(latest, info, beta);
   }
 
-  async function show(latest, info, beta) {
-    const cmd = info.method !== "cli" ? `cd "${info.dir}" && git pull && ./install.sh`
-              : beta ? "almost-arc update --beta" : "almost-arc update";
+  // ---- the notice: Update button runs the update in the background ----
+  // The mod lives in the profile, so its files can be replaced while Zen runs;
+  // they take effect after a restart (which also clears the startup cache).
+  const box = () => window.gNotificationBox || gBrowser.getNotificationBox();
+  const ID = "almost-arc-update";
+  const terminalCmd = (info, beta) => info.method !== "cli" ? `cd "${info.dir}" && git pull && ./install.sh`
+                                    : beta ? "almost-arc update --beta" : "almost-arc update";
+  const whatsNew = latest => ({ label: "What's new", callback: () => {
+    openTrustedLinkIn(`https://github.com/${REPO}/releases/tag/v${latest}`, "tab");
+    return true;
+  } });
+
+  async function notice(label, buttons, priority = "PRIORITY_INFO_MEDIUM") {
     try {
-      const box = window.gNotificationBox || gBrowser.getNotificationBox();
-      await box.appendNotification("almost-arc-update", {
-        label: `Almost Arc ${latest} is out (you have ${info.version}). Quit Zen and run: ${cmd}`,
-        priority: box.PRIORITY_INFO_MEDIUM,
-      }, [
-        { label: "Copy command", callback: () => {
-            Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(cmd);
-            return true;   // keep the notice open
-          } },
-        { label: "What's new", callback: () => {
-            openTrustedLinkIn(`https://github.com/${REPO}/releases/tag/v${latest}`, "tab");
-          } },
-        { label: "Skip this version", callback: () => { Services.prefs.setStringPref(SKIP, latest); } },
-      ]);
+      const b = box();
+      const old = b.getNotificationWithValue?.(ID);
+      if (old) b.removeNotification(old);
+      await b.appendNotification(ID, { label, priority: b[priority] }, buttons);
     } catch (e) {}
+  }
+
+  function show(latest, info, beta) {
+    notice(`Almost Arc ${latest} is out (you have ${info.version}).`, [
+      { label: "Update", callback: () => { update(latest, info, beta); return true; } },
+      whatsNew(latest),
+      { label: "Skip this version", callback: () => { Services.prefs.setStringPref(SKIP, latest); } },
+    ]);
+  }
+
+  // Which command to run, as { command, arguments }.
+  async function updateCommand(info, beta) {
+    if (info.method !== "cli") {
+      return { command: "/bin/bash", arguments: ["-c", 'cd "$1" && git pull --ff-only && ./install.sh', "almost-arc", info.dir] };
+    }
+    const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+    for (const c of ["/opt/homebrew/bin/almost-arc", "/usr/local/bin/almost-arc", `${home}/.almost-arc/bin/almost-arc`]) {
+      if (await IOUtils.exists(c)) return { command: c, arguments: beta ? ["update", "--beta"] : ["update"] };
+    }
+    return null;
+  }
+
+  let updating = false;
+  async function update(latest, info, beta) {
+    if (updating) return;
+    updating = true;
+    const failed = why => notice(
+      `Couldn't update Almost Arc (${why}). Quit Zen and run in Terminal: ${terminalCmd(info, beta)}`, [
+        { label: "Copy command", callback: () => {
+            Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper)
+              .copyString(terminalCmd(info, beta));
+            return true;
+          } },
+        whatsNew(latest),
+      ], "PRIORITY_WARNING_MEDIUM");
+    try {
+      const cmd = await updateCommand(info, beta);
+      if (!cmd) { updating = false; return failed("the almost-arc command wasn't found"); }
+      await notice(`Updating Almost Arc to ${latest}…`, []);
+      const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+      const proc = await Subprocess.call({
+        ...cmd,
+        stderr: "stdout",
+        environmentAppend: true,
+        environment: {
+          // install.sh: Zen is open on purpose, don't ask for a password (no Terminal to type it in)
+          ALMOST_ARC_FROM_ZEN: "1",
+          PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        },
+      });
+      const killer = setTimeout(() => proc.kill(), 10 * 60 * 1000);
+      let out = "", chunk;
+      while ((chunk = await proc.stdout.readString())) out += chunk;
+      const { exitCode } = await proc.wait();
+      clearTimeout(killer);
+      updating = false;
+      try {   // for troubleshooting
+        await IOUtils.writeUTF8(PathUtils.join(PathUtils.profileDir, "almost-arc-update.log"), out);
+      } catch (e) {}
+      if (exitCode !== 0) return failed(`exit code ${exitCode}; details in almost-arc-update.log in your profile`);
+      notice(`Almost Arc ${latest} is installed. Restart Zen to use it.`, [
+        { label: "Restart Zen", callback: () => {
+            Services.appinfo.invalidateCachesOnRestart();   // = about:support > Clear startup cache
+            Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart);
+          } },
+        whatsNew(latest),
+      ]);
+    } catch (e) {
+      updating = false;
+      failed(String(e?.message || e));
+    }
   }
 
   setTimeout(() => { check().catch(() => {}); }, 10000);
