@@ -64,10 +64,13 @@ if [ ! -d "$APP" ]; then
   ditto --noextattr --noqtn "$src" "$tmp/Zen.app" || fail "Couldn't copy Zen from the download."
   xattr -cr "$tmp/Zen.app" 2>/dev/null
   # Intact, and signed by Zen's own Developer ID team
+  # (Read codesign's details into a variable first: piping it into grep -q
+  # under pipefail fails at random, when grep stops reading early.)
+  sig="$(codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1)"
   if ! out="$(codesign --verify --deep "$tmp/Zen.app" 2>&1)" ||
-     ! codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -qx "TeamIdentifier=$ZEN_TEAM"; then
+     ! printf '%s\n' "$sig" | grep -x "TeamIdentifier=$ZEN_TEAM" >/dev/null; then
     say "codesign: $out"
-    codesign -dv --verbose=2 "$tmp/Zen.app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Identifier)=' | sed 's/^/almost-arc: /'
+    printf '%s\n' "$sig" | grep -E '^(Authority|TeamIdentifier|Identifier)=' | sed 's/^/almost-arc: /'
     fail "The Zen download failed its signature check, so it wasn't installed."
   fi
   say "Zen: $(defaults read "$tmp/Zen.app/Contents/Info" CFBundleIdentifier 2>/dev/null) $(defaults read "$tmp/Zen.app/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
