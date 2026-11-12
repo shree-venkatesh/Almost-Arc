@@ -54,14 +54,25 @@ jobs:
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Tag '$TAG' is not vX.Y.Z"; exit 1; }
           name="almost-arc-${TAG#v}.tar.gz"
           if gh release view "$TAG" --json assets -q '.assets[].name' | grep -qx "$name"; then
+            # Already attached (a beta promoted to a Release). Read the SHA-256 GitHub
+            # records for the file instead of downloading it: a download would add one
+            # to the download count. Download only if GitHub has no digest for it.
             echo "$name is already attached"
-            gh release download "$TAG" -p "$name" -O "$name"
+            sha="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+                   -q ".assets[] | select(.name == \"$name\") | .digest // \"\"" | sed -n 's/^sha256://p')"
+            if [ -z "$sha" ]; then
+              echo "no digest recorded; downloading to hash it"
+              gh release download "$TAG" -p "$name" -O "$name"
+              sha="$(sha256sum "$name" | cut -d' ' -f1)"
+            fi
           else
             git archive --format=tar --prefix="almost-arc-${TAG#v}/" "$TAG" | gzip -n -9 > "$name"
             gh release upload "$TAG" "$name"
+            sha="$(sha256sum "$name" | cut -d' ' -f1)"
           fi
+          [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Bad SHA-256 for $name: '$sha'"; exit 1; }
           echo "url=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${name}" >> "$GITHUB_OUTPUT"
-          echo "sha=$(sha256sum "$name" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
   update-formula:
     needs: release-file
