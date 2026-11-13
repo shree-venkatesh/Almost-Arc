@@ -16,7 +16,7 @@ name: macOS installer
 
 on:
   push:
-    paths: [pkg/**, site/install.sh, install.sh, get-zen.sh, .github/workflows/pkg.yml]
+    paths: [pkg/**, site/install.sh, install.sh, uninstall.sh, get-zen.sh, .github/workflows/pkg.yml]
   release:
     types: [published]
   schedule:
@@ -99,6 +99,19 @@ jobs:
           sudo installer -pkg "Almost-Arc-for-Zen-$VERSION.pkg" -target /
           almost-arc --version | grep -q "$VERSION"
 
+      - name: Uninstall puts Zen's own icon back
+        run: |
+          # icon state: the hidden Icon\r file and the kHasCustomIcon Finder flag
+          icon_state() {
+            local hex; hex="$(xattr -px com.apple.FinderInfo /Applications/Zen.app 2>/dev/null | tr -d ' \n')"
+            local flag=0; [ "${#hex}" -ge 18 ] && [ $(( 0x${hex:16:2} & 0x04 )) -ne 0 ] && flag=1
+            local file=0; [ -e /Applications/Zen.app/Icon$'\r' ] && file=1
+            echo "file=$file flag=$flag"
+          }
+          echo "before: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"
+          almost-arc uninstall
+          echo "after: $(icon_state)"; test "$(icon_state)" = "file=0 flag=0"
+
       - uses: actions/upload-artifact@v4
         with:
           name: Almost-Arc-for-Zen-${{ env.VERSION }}
@@ -138,3 +151,16 @@ jobs:
 
       - name: ./install.sh again (Zen already there)
         run: ./install.sh | tee out.txt && ! grep -q "downloading it" out.txt
+
+      - name: ./uninstall.sh puts Zen's own icon back
+        run: |
+          # icon state: the hidden Icon\r file and the kHasCustomIcon Finder flag
+          icon_state() {
+            local hex; hex="$(xattr -px com.apple.FinderInfo /Applications/Zen.app 2>/dev/null | tr -d ' \n')"
+            local flag=0; [ "${#hex}" -ge 18 ] && [ $(( 0x${hex:16:2} & 0x04 )) -ne 0 ] && flag=1
+            local file=0; [ -e /Applications/Zen.app/Icon$'\r' ] && file=1
+            echo "file=$file flag=$flag"
+          }
+          echo "before: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"
+          ./uninstall.sh
+          echo "after: $(icon_state)"; test "$(icon_state)" = "file=0 flag=0"
