@@ -156,6 +156,10 @@ Moves between spaces, and creating or deleting folders, aren't undone.
 - **The URL pill needs the floating address bar** (`zen.urlbar.behavior = float`). With other settings you get Zen's normal URL bar, still centered and styled.
 - **The JS features need a script loader** (Sine, or any install method above). With CSS only you get the look, but not the page color, pill, PiP or undo.
 
+## Feedback
+
+Found a bug or have an idea? [Send feedback](https://tally.so/r/q5DNBY) with a short form (no account needed), or [open an issue](https://github.com/shree-venkatesh/Almost-Arc/issues) if you have a GitHub account.
+
 ## For developers
 
 ### Files
