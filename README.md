@@ -157,7 +157,7 @@ Cmd+Z only undoes things **you** did in **this session**:
 
 1. **Only your own actions count.** A change is recorded only if it follows your own click, drag or keypress within 1.5s. Zen's own restores and syncs are never recorded.
 2. **Startup is ignored.** Nothing is recorded until Zen has finished restoring your session.
-3. **No big undos.** If a single undo would change more than 5 tabs, it's refused and the undo history is cleared.
+3. **No big moves.** If a single undo would move, pin or unpin more than 5 tabs, it's refused and the undo history is cleared. Reopening closed tabs has no such limit (so Cmd+Z brings back everything Zen's **Clear** closed, up to the 25 recently closed tabs Firefox remembers); when it's more than 5, they're reopened where they were but not pinned or put back into folders.
 4. **A backup before every undo.** Your session file is copied to `<profile>/zen-sessions-undo-backups/` first, keeping the last 10.
 
 Closed tabs only reopen if Firefox's most recently closed tab is the one you closed. Moves between spaces, and creating or deleting folders, aren't undone.

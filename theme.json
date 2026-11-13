@@ -2,7 +2,7 @@
   "name": "Almost Arc",
   "description": "Arc's look and feel for Zen: toolbar as the top of the page card, colored to match the page; centered URL pill; Arc-style tiles and pop-out sidebar; Arc-style Picture-in-Picture (auto PiP, Arc's PiP controls, swipe to a corner); and Cmd+Z to undo tab changes.",
   "author": "shree-venkatesh",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "tags": [
     "arc",
     "toolbar",

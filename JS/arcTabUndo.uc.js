@@ -6,7 +6,10 @@
 //                   1. only changes made right after your own click/drag/keypress count
 //                      (Zen's own restores/syncs are never recorded)
 //                   2. nothing is recorded until Zen has fully restored the session
-//                   3. a single undo that would touch more than a few tabs is refused
+//                   3. a single undo that would move, pin or unpin more than a few tabs
+//                      is refused. Reopening closed tabs only (e.g. after Zen's Clear) has
+//                      no limit beyond Firefox's recently-closed list; above the limit
+//                      they're only reopened, not moved back into folders or pinned
 //                   4. the session file is backed up before every undo
 //                 Only this session's actions; a reopened tab must match the one you closed.
 //                 Pref: almost-arc.tab-undo (default true)
@@ -38,7 +41,7 @@
   const { SessionStore } = ChromeUtils.importESModule("moz-src:///browser/components/sessionstore/SessionStore.sys.mjs");
 
   const MAX_STEPS = 50;
-  const MAX_TABS_PER_UNDO = 5;     // safeguard 3
+  const MAX_TABS_PER_UNDO = 5;     // safeguard 3 (steps that move, pin or unpin tabs)
   const INPUT_WINDOW_MS = 1500;    // safeguard 1: change must follow your input this closely
   const SETTLE_MS = 1500;          // safeguard 2: extra quiet time after session restore
   const BATCH_MS = 80;
@@ -178,13 +181,13 @@
     } catch (e) { log(`closedTabMatches error ${e}`); return false; }
   }
 
-  function undoAction(a) {
+  function undoAction(a, reopenOnly) {
     switch (a.type) {
       case "close": {
         if (!closedTabMatches(a.url)) return false;
         const tab = SessionStore.undoCloseTab(window, 0, window);
         if (!tab) { log("undoCloseTab returned nothing"); return false; }
-        try { restorePlace(tab, a); } catch (e) { log(`restorePlace error ${e}`); }
+        if (!reopenOnly) try { restorePlace(tab, a); } catch (e) { log(`restorePlace error ${e}`); }
         log(`reopened ${a.url} -> pinned=${tab.pinned} folder=${tab.group?.label || tab.group?.id || "-"} (wanted folder ${a.groupId || "-"})`);
         return true;
       }
@@ -215,19 +218,26 @@
     const step = history.pop();
     if (!step) return;
 
-    // safeguard 3: refuse anything touching more than a few tabs
+    // safeguard 3: refuse a step that would move, pin or unpin more than a few tabs.
+    // A step that only closed tabs (Zen's Clear, closing several at once) just
+    // reopens them through Firefox, so it may be larger; above the limit the tabs
+    // are only reopened, not moved back into folders or pinned.
     const touched = new Set(step.map(a => a.tab || a));
-    if (touched.size > MAX_TABS_PER_UNDO) {
+    const closesOnly = step.every(a => a.type === "close");
+    const big = touched.size > MAX_TABS_PER_UNDO;
+    if (big && !closesOnly) {
       console.warn(`[arcTabUndo] refused: undo would change ${touched.size} tabs`);
+      log(`refused: step changes ${touched.size} tabs`);
       history.length = 0;      // don't walk further back past a suspicious step
       return;
     }
+    if (big) log(`reopening ${touched.size} closed tabs (reopen only)`);
 
     await backupSession();     // safeguard 4
     undoing = true;
     try {
       for (const a of step.filter(a => a.type === "close").reverse()) {
-        try { undoAction(a); } catch (e) { console.warn("[arcTabUndo]", e); }
+        try { undoAction(a, big); } catch (e) { console.warn("[arcTabUndo]", e); }
       }
       for (const a of step.filter(a => a.type !== "close").reverse()) {
         try { undoAction(a); } catch (e) { console.warn("[arcTabUndo]", e); }
