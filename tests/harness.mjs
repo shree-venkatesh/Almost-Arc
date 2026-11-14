@@ -48,7 +48,7 @@ export const APPS = {
  *   windows      on-screen windows macOS reports (CGWindowList): an array of
  *                { app, x, y, w, h } (app key, "zen" for this window), a list of such
  *                arrays for successive looks (the last repeats), or "fail".
- *                Default: the app you switched to fully covers Zen's window.
+ *                Default: Zen isn't on screen (the app is full screen or on another desktop).
  *   openOnToggle true (default): an AutoToggle opens a PiP window for the tab
  *   oldPlayer    true: PiP windows lack closeFromForeground() (older Firefox)
  */
@@ -89,7 +89,7 @@ export async function loadAutoPip(opts = {}) {
     if (o.windows === "fail") throw new Error("osascript failed");
     const W = window;
     const zenRect = { x: W.screenX, y: W.screenY, w: W.outerWidth, h: W.outerHeight };
-    let list = o.windows ?? [{ app: lastFront, ...zenRect }, { app: "zen", ...zenRect }];
+    let list = o.windows ?? [{ app: lastFront, ...zenRect }];   // Zen not on this desktop
     if (Array.isArray(list[0])) list = o.windows.length > 1 ? o.windows.shift() : o.windows[0];
     return JSON.stringify(list.map(w => ({
       pid: APPS[w.app].pid, layer: w.layer ?? 0, alpha: 1,

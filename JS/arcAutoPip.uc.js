@@ -4,9 +4,9 @@
 //                 desktop/Space switch) while a video plays, pop it into PiP; close it
 //                 when you come back. Spotlight, screenshots, Control Center and
 //                 notifications are background helpers that never become the front
-//                 app, so they don't trigger it. Nor does switching while most of the
-//                 page stays in sight (an app on another monitor, or a smaller window
-//                 over part of Zen): you can still see the video.
+//                 app, so they don't trigger it. Nor does switching to an app while
+//                 Zen stays on the current desktop (another monitor, or a window over
+//                 part of Zen): only leaving the desktop pops it out.
 //                 macOS only. Pref: almost-arc.pip-on-blur
 // ==/UserScript==
 
@@ -131,54 +131,14 @@
     Math.max(0, Math.min(a.X + a.Width, b.X + b.Width) - Math.max(a.X, b.X)) *
     Math.max(0, Math.min(a.Y + a.Height, b.Y + b.Height) - Math.max(a.Y, b.Y));
 
-  // How much of rect `r` the rects in `covers` hide together (their union, clipped to r).
-  function coveredArea(r, covers) {
-    const R = r.X + r.Width, B = r.Y + r.Height;
-    const clip = covers.map(c => ({
-      x1: Math.max(r.X, c.X), y1: Math.max(r.Y, c.Y),
-      x2: Math.min(R, c.X + c.Width), y2: Math.min(B, c.Y + c.Height),
-    })).filter(c => c.x2 > c.x1 && c.y2 > c.y1);
-    const xs = [...new Set(clip.flatMap(c => [c.x1, c.x2]))].sort((a, b) => a - b);
-    let area = 0;
-    for (let i = 0; i + 1 < xs.length; i++) {
-      const spans = clip.filter(c => c.x1 <= xs[i] && c.x2 >= xs[i + 1])
-        .map(c => [c.y1, c.y2]).sort((a, b) => a[0] - b[0]);
-      let h = 0, top = -Infinity;
-      for (const [y1, y2] of spans) {
-        if (y2 <= top) continue;
-        h += y2 - Math.max(y1, top);
-        top = y2;
-      }
-      area += h * (xs[i + 1] - xs[i]);
-    }
-    return area;
-  }
-
-  // The page area on screen (where the video is), or the whole window as a fallback.
-  function pageRect() {
-    try {
-      const r = gBrowser.selectedBrowser.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0 && typeof window.mozInnerScreenX === "number")
-        return { X: window.mozInnerScreenX + r.left, Y: window.mozInnerScreenY + r.top, Width: r.width, Height: r.height };
-    } catch (e) {}
-    return { X: window.screenX, Y: window.screenY, Width: window.outerWidth, Height: window.outerHeight };
-  }
-
-  // Can you still see this Zen window's page? Yes if the window is on screen and the
-  // windows in front of it (any app; the list is front to back) hide less than half
-  // of the page: the app is on another monitor, side by side, or a smaller window
-  // over part of Zen.
-  const COVERED_TO_PIP = 0.5;
+  // Is this Zen window still on screen, i.e. on the current desktop (Space)? Then
+  // switching apps never pops the video out, however much other windows cover it
+  // (another monitor, side by side, a window over part or all of Zen). Only leaving
+  // the desktop does.
   async function zenStillVisible() {
     const me = { X: window.screenX, Y: window.screenY, Width: window.outerWidth, Height: window.outerHeight };
     const wins = await screenWindows();
-    const mine = wins.findIndex(w => w.pid === MY_PID && overlap(w.b, me) > 0.5 * me.Width * me.Height);
-    if (mine < 0) return false;                                // another desktop (Space)
-    const page = pageRect();
-    const above = wins.slice(0, mine).filter(w => w.pid !== MY_PID).map(w => w.b);   // not Zen's own PiP
-    const hidden = coveredArea(page, above) / (page.Width * page.Height);
-    log(`page ${Math.round(hidden * 100)}% covered`);
-    return hidden < COVERED_TO_PIP;
+    return wins.some(w => w.pid === MY_PID && overlap(w.b, me) > 0.5 * me.Width * me.Height);
   }
 
   function canPip() {
@@ -220,14 +180,14 @@
     if (r.zen) { log("skip: Zen is still the front app"); return; }
     if (!r.real) { log("skip: front app is system UI / a background helper"); return; }
 
-    // Clicked an app that leaves most of the page in sight (another monitor, side by
-    // side, a smaller window over part of Zen): you can still see the video. Check
-    // twice, since a Space switch is still animating at first.
+    // Zen's window is still on this desktop (the other app is on another monitor, side
+    // by side, or over Zen): no PiP. Check twice, since a Space switch is still
+    // animating at first.
     try {
       if (await zenStillVisible()) {
         await new Promise(res => setTimeout(res, SPACE_MS));
         if (my !== token) return;
-        if (await zenStillVisible()) { log("skip: Zen's window is still visible (most of the page isn't covered)"); return; }
+        if (await zenStillVisible()) { log("skip: Zen's window is still visible (still on this desktop)"); return; }
       }
     } catch (e) { log(`window check failed, popping out anyway: ${e}`); }
     if (my !== token) return;
