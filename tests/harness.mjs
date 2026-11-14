@@ -210,6 +210,16 @@ export async function loadAutoPip(opts = {}) {
 
   return {
     toggles, logs, calls, prefs, pipList, browser,
+    /** macOS reports Zen fully covered (true) or not; fires occlusionstatechange. */
+    cover(on = true) {
+      window.isFullyOccluded = on;
+      (listeners.occlusionstatechange || []).forEach(fn => fn({ type: "occlusionstatechange" }));
+    },
+    /** Zen minimized to the Dock (true) or restored; fires sizemodechange. */
+    minimize(on = true) {
+      window.windowState = on ? window.STATE_MINIMIZED : window.STATE_NORMAL;
+      (listeners.sizemodechange || []).forEach(fn => fn({ type: "sizemodechange" }));
+    },
     /** Firefox's PiP launcher actor class (the debug timeline wraps its receiveMessage). */
     LauncherParent,
     /** A message from this window's page to Firefox's PiP launcher, as an actor of it gets it. */

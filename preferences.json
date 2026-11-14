@@ -78,8 +78,8 @@
     "type": "checkbox"
   },
   {
-    "property": "media.videocontrols.picture-in-picture.enable-when-occluded.enabled",
-    "label": "Auto PiP when the window is minimized or fully covered (Firefox 159+)",
+    "property": "almost-arc.pip-when-covered",
+    "label": "Auto PiP when Zen is minimized or fully covered by other windows \u2014 macOS (restart Zen)",
     "type": "checkbox",
     "defaultValue": true
   },

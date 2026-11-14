@@ -89,8 +89,8 @@ describe("does not pop out when there's nothing to pop", () => {
     "video already in PiP": { tab: { pictureinpicture: true } },
     "already auto-PiP'd by Firefox": { tab: { autoPipped: true } },
     "video is fullscreen": { win: { fullscreen: true } },
-    "Zen minimized (Firefox's own auto-PiP handles it)": { win: { windowState: 2 } },
-    "Zen fully covered (Firefox's own auto-PiP handles it)": { win: { isFullyOccluded: true } },
+    "Zen minimized when switching (the covered check handles it)": { win: { windowState: 2 } },
+    "Zen fully covered when switching (the covered check handles it)": { win: { isFullyOccluded: true } },
   };
   for (const [name, opts] of Object.entries(cases)) {
     test(name, async () => {
@@ -161,8 +161,14 @@ describe("closes its PiP when you come back", () => {
 });
 
 describe("settings and platform", () => {
-  test("off with almost-arc.pip-on-blur = false", async () => {
+  test("off with almost-arc.pip-on-blur = false: no PiP on app switches", async () => {
     const env = await loadAutoPip({ prefs: { "almost-arc.pip-on-blur": false } });
+    await env.deactivate();
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("both almost-arc.pip-on-blur and almost-arc.pip-when-covered off: does nothing at all", async () => {
+    const env = await loadAutoPip({ prefs: { "almost-arc.pip-on-blur": false, "almost-arc.pip-when-covered": false } });
     assert.ok(!env.hasListeners);
   });
 
@@ -173,7 +179,8 @@ describe("settings and platform", () => {
 
   test("1.0.0 setting arc-toolbar.pip-on-blur = false is carried over", async () => {
     const env = await loadAutoPip({ prefs: { "arc-toolbar.pip-on-blur": false } });
-    assert.ok(!env.hasListeners);
+    await env.deactivate();
+    assert.ok(!popped(env), why(env));
     assert.equal(env.prefs.get("almost-arc.pip-on-blur"), false);
     assert.ok(!env.prefs.has("arc-toolbar.pip-on-blur"));
   });
@@ -302,5 +309,107 @@ describe("almost-arc.pip-debug timeline", () => {
     env.pipMessage("PictureInPicture:Request", { isPipApiRequest: true });
     assert.ok(!env.LauncherParent.prototype.__arcPipLogged);
     assert.equal(env.logs.length, 0);
+  });
+});
+
+// Zen fully covered by other windows on the same desktop, or minimized. macOS
+// reports "fully covered" for a moment during app switches, and opening a PiP made
+// it report Zen uncovered again, so Firefox's own version (enable-when-occluded)
+// flashed a PiP open and shut. Here: only after 0.4 s of staying covered, and the
+// PiP closes when you come back to Zen, not on the next "uncovered".
+describe("Zen fully covered or minimized", () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const SOUND = { tab: { soundplaying: true } };
+  const count = env => env.toggles.filter(t => t === TOGGLE).length;
+
+  test("covered for longer than 0.4 s: pops out", async () => {
+    const env = await loadAutoPip(SOUND);
+    env.cover(true);
+    await wait(500);
+    assert.equal(count(env), 1, why(env));
+    assert.match(env.lastLog(), /PiP requested \(Zen fully covered\)/);
+  });
+
+  test("covered only for a moment (an app switch flicker): no PiP", async () => {
+    const env = await loadAutoPip(SOUND);
+    env.cover(true);
+    await wait(50);
+    env.cover(false);
+    await wait(500);
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("the PiP opening makes macOS report Zen uncovered: the PiP stays", async () => {
+    const env = await loadAutoPip(SOUND);
+    env.cover(true);
+    await wait(500);
+    assert.equal(env.pipList.length, 1);
+    env.cover(false);                 // reported right after the PiP opened
+    await wait(500);
+    assert.equal(env.pipList.length, 1, "still open");
+    assert.equal(count(env), 1, "asked once");
+  });
+
+  test("back in Zen: closes it", async () => {
+    const env = await loadAutoPip(SOUND);
+    env.cover(true);
+    await wait(500);
+    env.cover(false);
+    env.activate();
+    assert.equal(env.pipList.length, 0, why(env));
+  });
+
+  test("you come back before 0.4 s: no PiP", async () => {
+    const env = await loadAutoPip(SOUND);
+    env.cover(true);
+    await wait(100);
+    env.activate();
+    await wait(500);
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("minimized: pops out; restored and back in Zen: closes it", async () => {
+    const env = await loadAutoPip(SOUND);
+    env.minimize(true);
+    await wait(500);
+    assert.equal(count(env), 1, why(env));
+    assert.match(env.lastLog(), /Zen minimized/);
+    env.minimize(false);
+    env.activate();
+    assert.equal(env.pipList.length, 0);
+  });
+
+  test("no sound playing: no PiP", async () => {
+    const env = await loadAutoPip({ tab: { soundplaying: false } });
+    env.cover(true);
+    await wait(500);
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("video already in PiP: no second one", async () => {
+    const env = await loadAutoPip({ tab: { soundplaying: true, pictureinpicture: true } });
+    env.cover(true);
+    await wait(500);
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("switching to an app that covers all of Zen: one PiP, not two", async () => {
+    const env = await loadAutoPip({ ...SOUND, front: "safari" });
+    env.cover(true);                  // the app's window now covers Zen
+    await env.deactivate();
+    await wait(500);
+    assert.equal(count(env), 1, why(env));
+  });
+
+  test("off with almost-arc.pip-when-covered = false", async () => {
+    const env = await loadAutoPip({ ...SOUND, prefs: { "almost-arc.pip-when-covered": false } });
+    env.cover(true);
+    await wait(500);
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("turns off Firefox's own enable-when-occluded, so the two don't both fire", async () => {
+    const env = await loadAutoPip({ prefs: { "media.videocontrols.picture-in-picture.enable-when-occluded.enabled": true } });
+    assert.equal(env.prefs.get("media.videocontrols.picture-in-picture.enable-when-occluded.enabled"), false);
   });
 });

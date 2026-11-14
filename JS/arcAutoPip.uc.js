@@ -6,8 +6,9 @@
 //                 notifications are background helpers that never become the front
 //                 app, so they don't trigger it. Nor does switching to an app while
 //                 Zen stays on the current desktop (another monitor, or a window over
-//                 part of Zen): only leaving the desktop pops it out. (Fully covered
-//                 is Firefox's enable-when-occluded, which install.sh turns on.)
+//                 part of Zen): only leaving the desktop pops it out. Also pops it
+//                 out when Zen stays fully covered or minimized for 0.4 s (pref
+//                 almost-arc.pip-when-covered; replaces Firefox's enable-when-occluded).
 //                 macOS only. Pref: almost-arc.pip-on-blur
 // ==/UserScript==
 
@@ -21,7 +22,7 @@
 
   // List this script's settings in about:config with their defaults, and carry over
   // values set under the 1.0.0 names (arc-toolbar.*), then remove those.
-  for (const [name, def] of [["pip-on-blur", true], ["pip-debug", false]]) {
+  for (const [name, def] of [["pip-on-blur", true], ["pip-when-covered", true], ["pip-debug", false]]) {
     try {
       const pref = `almost-arc.${name}`, old = `arc-toolbar.${name}`;
       Services.prefs.getDefaultBranch("").setBoolPref(pref, def);
@@ -33,7 +34,18 @@
   }
 
   if (AppConstants.platform !== "macosx") return;
-  if (!Services.prefs.getBoolPref("almost-arc.pip-on-blur", true)) return;
+
+  // PiP when Zen is fully covered or minimized is done here, not by Firefox's
+  // enable-when-occluded: macOS reports a window "fully covered" for a moment during
+  // app switches, and opening the PiP itself makes it report Zen uncovered, so
+  // Firefox's version flashed a PiP open and shut. Here Zen must stay covered for
+  // COVER_MS, and the PiP closes when you come back to Zen. Firefox's own is turned
+  // off so the two don't both fire.
+  const ON_SWITCH = Services.prefs.getBoolPref("almost-arc.pip-on-blur", true);
+  const ON_COVER = Services.prefs.getBoolPref("almost-arc.pip-when-covered", true);
+  const FX_OCCLUDED = "media.videocontrols.picture-in-picture.enable-when-occluded.enabled";
+  try { if (Services.prefs.getBoolPref(FX_OCCLUDED, false)) Services.prefs.setBoolPref(FX_OCCLUDED, false); } catch (e) {}
+  if (!ON_SWITCH && !ON_COVER) return;
 
   const DEBUG = Services.prefs.getBoolPref("almost-arc.pip-debug", false);
   const LOG = PathUtils.join(PathUtils.profileDir, "almost-arc-pip-debug.log");
@@ -53,6 +65,7 @@
   const MY_PID = Services.appinfo.processID;
   const RETRY_MS = 40;            // second look if macOS hadn't switched the front app yet
   const SPACE_MS = 600;           // a desktop (Space) switch animates; look again after it
+  const COVER_MS = 400;           // how long Zen must stay fully covered / minimized before PiP
   let token = 0;
   // What this script opened, so it can close exactly that on return
   let ours = null;   // { browser, before: Set<pipWindow> }
@@ -133,17 +146,15 @@
     Math.max(0, Math.min(a.Y + a.Height, b.Y + b.Height) - Math.max(a.Y, b.Y));
 
   // Is this Zen window still on screen, i.e. on the current desktop (Space)? Then
-  // this script doesn't pop the video out (another monitor, side by side, a window
-  // over part of Zen). A window covering all of Zen is Firefox's job: with
-  // enable-when-occluded (install.sh turns it on) it pops out once macOS reports
-  // the window fully covered, and closes when any of it shows again.
+  // switching apps doesn't pop the video out (another monitor, side by side, a
+  // window over part of Zen). A window covering all of Zen is onCoverChange's job.
   async function zenStillVisible() {
     const me = { X: window.screenX, Y: window.screenY, Width: window.outerWidth, Height: window.outerHeight };
     const wins = await screenWindows();
     return wins.some(w => w.pid === MY_PID && overlap(w.b, me) > 0.5 * me.Width * me.Height);
   }
 
-  function canPip() {
+  function canPip({ whileHidden = false } = {}) {
     const browser = gBrowser.selectedBrowser;
     const tab = gBrowser.selectedTab;
     if (!browser || browser.audioMuted) return "muted/no browser";
@@ -151,12 +162,39 @@
     if (tab.hasAttribute("pictureinpicture")) return "already in PiP";
     if (PiP?.weakAutoPipBrowserToParent?.has(browser)) return "already auto-PiP'd";
     if (document.fullscreenElement) return "video fullscreen";
-    // Minimized / fully covered: Firefox's own auto-PiP handles it — don't double-toggle
-    if (window.windowState === window.STATE_MINIMIZED || window.isFullyOccluded) return "hidden (Firefox handles it)";
+    // Minimized / fully covered: the covered check below handles it — don't double-toggle
+    if (!whileHidden && hidden()) return "hidden (the covered check handles it)";
     return null;
+  }
+  const hidden = () => window.windowState === window.STATE_MINIMIZED || !!window.isFullyOccluded;
+
+  function requestPip(why) {
+    ours = { browser: gBrowser.selectedBrowser, before: new Set(pipWindows()) };
+    try {
+      gBrowser.selectedBrowser.browsingContext.currentWindowGlobal
+        .getActor("PictureInPictureLauncher")
+        .sendAsyncMessage("PictureInPicture:AutoToggle");
+      log(`PiP requested (${why})`);
+    } catch (e) { log(`PiP request failed: ${e}`); }
+  }
+
+  // Zen fully covered (by other apps' windows on this desktop) or minimized: PiP,
+  // but only if it stays that way for COVER_MS. Back in Zen (onActivate) closes it.
+  let coverTimer = 0;
+  function onCoverChange() {
+    clearTimeout(coverTimer);
+    if (!ON_COVER || !hidden()) return;
+    coverTimer = setTimeout(() => {
+      if (!hidden()) { log("skip: covered only for a moment"); return; }
+      if (Services.focus.activeWindow === window) { log("skip (covered): Zen has focus"); return; }
+      const skip = canPip({ whileHidden: true });
+      if (skip) { log(`skip (covered): ${skip}`); return; }
+      requestPip(window.windowState === window.STATE_MINIMIZED ? "Zen minimized" : "Zen fully covered");
+    }, COVER_MS);
   }
 
   async function onDeactivate() {
+    if (!ON_SWITCH) return;
     const my = ++token;
 
     // Focus moved to another Zen window or the PiP player: still Zen, do nothing
@@ -196,17 +234,12 @@
 
     const again = canPip();
     if (again) { log(`skip: ${again}`); return; }
-    ours = { browser: gBrowser.selectedBrowser, before: new Set(pipWindows()) };
-    try {
-      gBrowser.selectedBrowser.browsingContext.currentWindowGlobal
-        .getActor("PictureInPictureLauncher")
-        .sendAsyncMessage("PictureInPicture:AutoToggle");
-      log(`PiP requested (front app: ${r.front})`);
-    } catch (e) { log(`PiP request failed: ${e}`); }
+    requestPip(`front app: ${r.front}`);
   }
 
   function onActivate() {
     token++;
+    clearTimeout(coverTimer);
     if (!ours) return;
     const { browser, before } = ours;
     ours = null;
@@ -229,6 +262,8 @@
 
   window.addEventListener("deactivate", onDeactivate);
   window.addEventListener("activate", onActivate);
+  window.addEventListener("occlusionstatechange", onCoverChange);
+  window.addEventListener("sizemodechange", onCoverChange);
   log(`loaded (pid ${MY_PID})`);
 
   // ---- almost-arc.pip-debug only: a timeline of everything around PiP ----

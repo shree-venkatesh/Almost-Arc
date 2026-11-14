@@ -126,6 +126,7 @@ Removing puts everything back, including Zen's own icon.
 | --- | --- | --- |
 | `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes |
 | `almost-arc.pip-on-blur` | on | Auto PiP when you switch to another app or desktop (macOS) |
+| `almost-arc.pip-when-covered` | on | Auto PiP when Zen is minimized or other windows cover all of it for a moment (macOS; replaces Firefox's own, which flashed a PiP open and shut) |
 | `almost-arc.pip-layout` | on | Arc's PiP controls (Back to Tab, Minimize, Close, 15 s skips) |
 | `almost-arc.pip-flick` | on | A two-finger trackpad swipe, or letting go mid-drag, flings a PiP window to a corner; a window dropped partly off screen slides back (mouse wheels don't move it) |
 | `almost-arc.domain-only` | off | Show only the domain in the URL pill |

@@ -172,9 +172,11 @@ user_pref("zen.view.compact.hide-toolbar", false);
 user_pref("zen.urlbar.behavior", "float");
 user_pref("browser.urlbar.trimWww", true);
 user_pref("media.videocontrols.picture-in-picture.enable-when-switching-tabs.enabled", true);
-user_pref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled", true);
-// <<< almost-arc
 PREFS
+# PiP when Zen is fully covered or minimized: on macOS arcAutoPip.uc.js does it
+# (Firefox's own version flashes a PiP open and shut), so Firefox's is off there.
+OCCLUDED=true; [ "$(uname)" = Darwin ] && OCCLUDED=false
+printf 'user_pref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled", %s);\n// <<< almost-arc\n' "$OCCLUDED" >> "$USERJS"
 
 echo
 if [ "$REOPEN_ZEN" = 1 ]; then
