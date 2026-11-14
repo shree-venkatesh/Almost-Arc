@@ -5,8 +5,10 @@
 // PiP flick (JS/arcPipFlick.uc.js) run in node:vm with the PiP window faked.
 //   Trackpad: a two-finger swipe (pixel scrolls) flings it to a corner; mouse wheels
 //   that scroll by lines leave it where it is.
-//   Mouse: macOS drags the window itself. Letting go while it's moving fast flings it
-//   to a corner; letting go slowly leaves it there, unless it's partly off the screen,
+//   Mouse: the script drags the window itself (macOS's own drag is turned off: Zen
+//   hears nothing during it, and macOS tiles a window dragged against a screen edge).
+//   The window follows the pointer. Letting go while moving fast flings it to a
+//   corner; letting go slowly leaves it there, unless it's partly off the screen,
 //   then it slides back to the nearest edge.
 
 import { test, describe } from "node:test";
@@ -25,6 +27,8 @@ const FRAME = 16;   // ms per animation frame
 function load(prefs = {}) {
   const listeners = {};
   const moves = [];
+  const sheets = [];
+  const captured = new Set();
   let now = 1000;
   let frames = [];   // pending requestAnimationFrame callbacks
   let nextId = 1;
@@ -33,9 +37,13 @@ function load(prefs = {}) {
     outerWidth: W, outerHeight: H, screenX: 556, screenY: 300,   // middle of the screen
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     moveTo(x, y) { window.screenX = x; window.screenY = y; moves.push([x, y]); },
+    windowUtils: { AUTHOR_SHEET: 2, loadSheetUsingURIString: (uri, type) => sheets.push(decodeURIComponent(uri)) },
   };
+  const document = { documentElement: {
+    setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id),
+  } };
   const context = {
-    window, console,
+    window, document, console,
     Services: { prefs: {
       getDefaultBranch: () => ({ setBoolPref() {} }),
       getBoolPref: (k, d) => (k in prefs ? prefs[k] : d),
@@ -66,16 +74,26 @@ function load(prefs = {}) {
     return prevented;
   }
 
-  // Mouse drag, as macOS does it: Firefox reports the press in its drag region, the
-  // window follows the cursor (path: [x, y] per frame), then the release.
-  function drag(path, { holdMs = 0, metaKey = false } = {}) {
-    fire("draggableregionleftmousedown");
-    for (const [x, y] of path) { frame(); window.screenX = x; window.screenY = y; }
+  // Pointer events, as the PiP window gets them. `on`: the element pressed.
+  const VIDEO = { closest: () => null };                           // the video area (#controls)
+  const BUTTON = { closest: sel => (sel.includes("button") ? BUTTON : null) };
+  const pointer = (type, x, y, extra = {}) =>
+    fire(type, { type, pointerId: 1, button: 0, screenX: x, screenY: y, target: VIDEO, metaKey: false, ...extra });
+
+  // Mouse drag: press 100 px right / 50 px below the window's top left, move so the
+  // window should be at each point of `path` (one point per 16 ms frame), optionally
+  // hold still, then let go.
+  function drag(path, { holdMs = 0, metaKey = false, on = VIDEO, cancel = false } = {}) {
+    // the window moves by what the pointer moves, so pointer = window spot + (100, 50)
+    let p = [window.screenX + 100, window.screenY + 50];
+    pointer("pointerdown", ...p, { target: on });
+    for (const [x, y] of path) { frame(); p = [x + 100, y + 50]; pointer("pointermove", ...p, { target: on }); }
     if (holdMs) for (let t = 0; t < holdMs; t += FRAME) frame();   // still holding, not moving
-    fire("mouseup", { metaKey });
+    pointer(cancel ? "pointercancel" : "pointerup", ...p, { target: on, metaKey });
   }
 
-  return { window, moves, fire, scroll, drag, frame, settle, pos: () => [window.screenX, window.screenY] };
+  return { window, moves, sheets, captured, fire, pointer, BUTTON, scroll, drag, frame, settle,
+           pos: () => [window.screenX, window.screenY] };
 }
 
 // a straight line from (x0, y0), `step` px per frame in (dx, dy) direction
@@ -230,12 +248,52 @@ describe("mouse: drag and place (let go slowly)", () => {
     assert.equal(env.moves.length, 0);
   });
 
-  test("a mouseup that didn't start a drag (a button click) does nothing", () => {
+  test("a pointerup without a press (it started elsewhere) does nothing", () => {
     const env = load();
     env.window.screenX = 1300;   // even if it's off screen
-    env.fire("mouseup", {});   // no draggableregionleftmousedown before it
+    env.pointer("pointerup", 1400, 350);
     env.settle();
     assert.equal(env.moves.length, 0);
+  });
+
+  test("a wobble under 3 px is a click, not a drag", () => {
+    const env = load();
+    env.drag([[557, 301], [558, 300]]);
+    env.settle();
+    assert.equal(env.moves.length, 0);
+  });
+
+  test("pressing a control (button, slider) doesn't drag the window", () => {
+    const env = load();
+    env.drag(line(556, 300, 30, 0, 8), { on: env.BUTTON });
+    env.settle();
+    assert.equal(env.moves.length, 0);
+  });
+
+  test("the window follows the pointer while you drag, even past the screen edge", () => {
+    const env = load();
+    env.drag(line(556, 300, 10, 0, 100).concat([[1700, 300]]), { holdMs: 1 });
+    assert.ok(env.moves.some(([x]) => x === 1700), "it went past the right edge while dragging");
+  });
+
+  test("keeps the pointer while dragging (pointer capture), lets go of it after", () => {
+    const env = load();
+    env.pointer("pointerdown", 656, 350);
+    assert.ok(env.captured.has(1));
+    env.pointer("pointerup", 656, 350);
+    assert.equal(env.captured.size, 0);
+  });
+
+  test("drag cancelled by the system: no flick, but kept on screen", () => {
+    const env = load();
+    env.drag(line(1000, 300, 30, 0, 12), { cancel: true });   // fast, ends at x 1360
+    env.settle();
+    assert.deepEqual(env.pos(), [RIGHT, 300]);
+  });
+
+  test("macOS's own window dragging is turned off on the video", () => {
+    const env = load();
+    assert.ok(env.sheets.some(css => /#controls[^{]*\{[^}]*-moz-window-dragging:\s*no-drag/.test(css)), env.sheets.join("\n"));
   });
 });
 

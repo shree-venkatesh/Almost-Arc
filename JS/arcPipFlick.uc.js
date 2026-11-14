@@ -26,7 +26,7 @@
   const MARGIN  = 16;   // gap from the screen edge (px)
   const DUR     = 400;  // glide length (ms)
   const IDLE    = 120;  // ms without scroll events = swipe over
-  const FLING   = 0.5;  // px/ms the window is moving when you let go of a drag = a flick
+  const FLING   = 0.5;  // px/ms the pointer is moving when you let go of a drag = a flick
   const RECENT  = 100;  // ms before letting go that count for that speed
 
   // almost-arc.pip-debug: log each scroll's kind and deltas, to tell mice from trackpads
@@ -109,35 +109,58 @@
   }
 
   // ---- Click and drag ----
-  // macOS moves the window itself (Firefox's drag region); Firefox tells us when it
-  // starts (draggableregionleftmousedown) and ends (mouseup). In between, note
-  // where the window is each frame, to know how fast it was moving when let go.
-  let drag = null;   // { samples: [[time, x, y]], raf }
-  function track(now) {
-    if (!drag) return;
-    drag.samples.push([now, window.screenX, window.screenY]);
+  // We move the window ourselves instead of letting macOS drag it: during a native
+  // drag Zen hears nothing (no speed, no release), and macOS tiles a window dragged
+  // with the cursor at a screen edge, which squashes the PiP. So the video area is
+  // made non-draggable and the window follows the pointer.
+  const DRAG_MIN = 3;   // px the pointer moves before a press becomes a drag (else it's a click)
+  try {
+    window.windowUtils.loadSheetUsingURIString("data:text/css;charset=utf-8," + encodeURIComponent(
+      "#controls, #controls-bottom-gradient, body { -moz-window-dragging: no-drag !important; }"),
+      window.windowUtils.AUTHOR_SHEET);
+  } catch (e) { log(`drag sheet failed: ${e}`); }
+
+  // controls keep their clicks; anywhere else on the video drags the window
+  const INTERACTIVE = "button, input, select, textarea, a, label, [role], #scrubber, .control-item";
+  let drag = null;   // { id, px, py, wx, wy, moved, samples: [[time, px, py]] }
+  function onDown(e) {
+    if (e.button !== 0 || drag || e.target?.closest?.(INTERACTIVE)) return;
+    drag = { id: e.pointerId, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
+             moved: false, samples: [[performance.now(), e.screenX, e.screenY]] };
+    try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+  function onMove(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.screenX - drag.px, dy = e.screenY - drag.py;
+    if (!drag.moved) {
+      if (Math.hypot(dx, dy) < DRAG_MIN) return;
+      drag.moved = true;
+      if (anim) { cancelAnimationFrame(anim); anim = 0; }   // grabbed mid-glide
+      drag.wx = window.screenX; drag.wy = window.screenY;   // where it is now, if a glide moved it
+    }
+    const now = performance.now();
+    drag.samples.push([now, e.screenX, e.screenY]);
     while (drag.samples.length > 2 && drag.samples[1][0] < now - 2 * RECENT) drag.samples.shift();
-    drag.raf = requestAnimationFrame(track);
+    window.moveTo(drag.wx + (e.screenX - drag.px), drag.wy + (e.screenY - drag.py));
   }
-  function onDragStart() {
-    if (anim) { cancelAnimationFrame(anim); anim = 0; }   // grabbed mid-glide
-    drag = { samples: [[performance.now(), window.screenX, window.screenY]], raf: 0 };
-    drag.raf = requestAnimationFrame(track);
-  }
-  function onDragEnd(e) {
-    if (!drag) return;
-    const { samples, raf } = drag;
+  function onUp(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
     drag = null;
-    cancelAnimationFrame(raf);
-    if (e.metaKey) return;                            // Firefox's own Cmd+drag corner snap
-    const now = performance.now(), x = window.screenX, y = window.screenY;
-    const [, x0, y0] = samples[0];
-    if (x === x0 && y === y0 && samples.every(([, sx, sy]) => sx === x0 && sy === y0)) return;   // a click
-    // where it was RECENT ms ago (or the newest earlier look, if frames were sparse)
-    const ref = samples.find(([t]) => t >= now - RECENT) ?? samples[samples.length - 1];
-    const dt = Math.max(now - ref[0], 16);
-    const vx = (x - ref[1]) / dt, vy = (y - ref[2]) / dt, speed = Math.hypot(vx, vy);
+    try { document.documentElement.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (!d.moved) return;                              // a click
+    if (e.type !== "pointerup") { settle(); return; }  // cancelled: just keep it on screen
+    // how fast the pointer moved over the last RECENT ms (0 if it was held still)
+    const now = performance.now();
+    const ref = d.samples.find(([t]) => t >= now - RECENT);
+    let vx = 0, vy = 0;
+    if (ref) {
+      const dt = Math.max(now - ref[0], 16);
+      vx = (e.screenX - ref[1]) / dt; vy = (e.screenY - ref[2]) / dt;
+    }
+    const speed = Math.hypot(vx, vy);
     log(`drag let go: ${speed.toFixed(2)} px/ms`);
+    if (e.metaKey) return;                             // Firefox's own Cmd+drag corner snap
     if (speed >= FLING) {
       const dirX = Math.abs(vx) >= AXIS * speed ? Math.sign(vx) : 0;
       const dirY = Math.abs(vy) >= AXIS * speed ? Math.sign(vy) : 0;
@@ -149,6 +172,8 @@
 
   window.__arcPipFlick = true;
   window.addEventListener("wheel", onWheel, { capture: true, passive: false });
-  window.addEventListener("draggableregionleftmousedown", onDragStart);
-  window.addEventListener("mouseup", onDragEnd, true);
+  window.addEventListener("pointerdown", onDown, true);
+  window.addEventListener("pointermove", onMove, true);
+  window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", onUp, true);
 })();
