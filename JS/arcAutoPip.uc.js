@@ -230,4 +230,58 @@
   window.addEventListener("deactivate", onDeactivate);
   window.addEventListener("activate", onActivate);
   log(`loaded (pid ${MY_PID})`);
+
+  // ---- almost-arc.pip-debug only: a timeline of everything around PiP ----
+  // Who asks for a PiP (a page's own PiP request, Firefox's auto-toggle, a click),
+  // and what this window was doing then, to find PiPs that open by themselves.
+  if (DEBUG) {
+    const state = () => {
+      const tab = gBrowser.selectedTab, b = gBrowser.selectedBrowser;
+      const active = Services.focus.activeWindow;
+      return `[focus: ${active === window ? "this window" : active?.document?.documentURI === PIP_URL ? "PiP" : active ? "other Zen window" : "another app"}` +
+        `, covered: ${window.isFullyOccluded}, state: ${window.windowState}, page active: ${b?.docShellIsActive}` +
+        `, sound: ${tab?.hasAttribute("soundplaying")}]`;
+    };
+    window.addEventListener("activate", () => log(`event: activate ${state()}`));
+    window.addEventListener("deactivate", () => log(`event: deactivate ${state()}`));
+    window.addEventListener("occlusionstatechange", () => log(`event: covered changed ${state()}`));
+    window.addEventListener("sizemodechange", () => log(`event: size mode changed ${state()}`));
+    try {
+      const mod = ChromeUtils.importESModule(
+        "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs");
+      for (const cls of ["PictureInPictureLauncherParent", "PictureInPictureParent", "PictureInPictureToggleParent"]) {
+        const proto = mod[cls]?.prototype;
+        if (!proto || proto.__arcPipLogged) continue;
+        proto.__arcPipLogged = true;
+        const orig = proto.receiveMessage;
+        proto.receiveMessage = function (msg) {
+          try {
+            if (!/Timestamp|Scrubber|UpdateEligible|VolumeChange/.test(msg.name)) {
+              const d = msg.data || {};
+              const bits = ["isPipApiRequest", "autoFocus", "playing", "isMuted"].filter(k => k in d).map(k => `${k}=${d[k]}`);
+              const owner = this.browsingContext?.top?.embedderElement?.documentGlobal;
+              const mine = owner === window;
+              if (mine || !owner) log(`message: ${msg.name} ${bits.join(" ")} ${mine ? state() : ""}`);
+            }
+          } catch (e) {}
+          return orig.apply(this, arguments);
+        };
+      }
+    } catch (e) { log(`PiP message logging failed: ${e}`); }
+    const ww = {
+      observe(subject, topic) {
+        if (topic === "domwindowopened") {
+          subject.addEventListener("load", () => {
+            if (subject.document?.documentURI === PIP_URL) log(`PiP window opened ${state()}`);
+          }, { once: true });
+        } else if (topic === "domwindowclosed" && subject.document?.documentURI === PIP_URL) {
+          log(`PiP window closed ${state()}`);
+        }
+      },
+    };
+    try {
+      Services.ww.registerNotification(ww);
+      window.addEventListener("unload", () => Services.ww.unregisterNotification(ww), { once: true });
+    } catch (e) { log(`PiP window logging failed: ${e}`); }
+  }
 })();

@@ -282,3 +282,25 @@ describe("multiple monitors / Zen still visible", () => {
     assert.equal(env.calls.osascript, 0, "no window lookup needed");
   });
 });
+
+describe("almost-arc.pip-debug timeline", () => {
+  test("logs a page's own PiP request with this window's state, and still handles it", async () => {
+    const env = await loadAutoPip({ tab: { soundplaying: true } });
+    const r = env.pipMessage("PictureInPicture:Request", { isPipApiRequest: true, autoFocus: true, playing: true });
+    assert.equal(r, "handled PictureInPicture:Request");
+    assert.match(env.logs.join("\n"), /message: PictureInPicture:Request isPipApiRequest=true autoFocus=true playing=true \[focus: .*sound: true\]/);
+  });
+
+  test("logs focus changes", async () => {
+    const env = await loadAutoPip();
+    await env.deactivate();
+    assert.match(env.logs.join("\n"), /event: deactivate \[focus:/);
+  });
+
+  test("off: Firefox's PiP code is left untouched", async () => {
+    const env = await loadAutoPip({ prefs: { "almost-arc.pip-debug": false } });
+    env.pipMessage("PictureInPicture:Request", { isPipApiRequest: true });
+    assert.ok(!env.LauncherParent.prototype.__arcPipLogged);
+    assert.equal(env.logs.length, 0);
+  });
+});

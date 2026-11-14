@@ -58,6 +58,8 @@ export async function loadAutoPip(opts = {}) {
     activeWindow: "other", windows: null, openOnToggle: true, ...opts,
   };
   const fronts = [].concat(o.front);
+  // fresh per test: the debug timeline patches its prototype
+  const LauncherParent = class { receiveMessage(msg) { return `handled ${msg.name}`; } };
   const calls = { lsappinfo: [], osascript: 0 };
   let lastFront = [].concat(o.front)[0];
   const toggles = [];
@@ -194,7 +196,8 @@ export async function loadAutoPip(opts = {}) {
       importESModule(url) {
         if (url.endsWith("Subprocess.sys.mjs")) return { Subprocess };
         if (url.endsWith("PictureInPicture.sys.mjs"))
-          return { PictureInPicture: { weakAutoPipBrowserToParent: autoPipped, weakWinToBrowser: winToBrowser } };
+          return { PictureInPicture: { weakAutoPipBrowserToParent: autoPipped, weakWinToBrowser: winToBrowser },
+                   PictureInPictureLauncherParent: LauncherParent };
         throw new Error(`unexpected module ${url}`);
       },
     },
@@ -207,6 +210,14 @@ export async function loadAutoPip(opts = {}) {
 
   return {
     toggles, logs, calls, prefs, pipList, browser,
+    /** Firefox's PiP launcher actor class (the debug timeline wraps its receiveMessage). */
+    LauncherParent,
+    /** A message from this window's page to Firefox's PiP launcher, as an actor of it gets it. */
+    pipMessage(name, data = {}) {
+      const actor = Object.create(LauncherParent.prototype);
+      actor.browsingContext = { top: { embedderElement: { documentGlobal: window } } };
+      return actor.receiveMessage({ name, data });
+    },
     /** Firefox still thinks this tab has a PiP open (tab switching won't auto-PiP it). */
     get tabStuckInPip() { return firefoxPipTabs.has(browser) && !pipList.some(w => winToBrowser.get(w) === browser); },
     /** Another app or desktop took focus; resolves when the script has decided. */
