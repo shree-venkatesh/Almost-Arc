@@ -225,15 +225,38 @@ describe("multiple monitors / Zen still visible", () => {
     assert.ok(!popped(env), why(env));
   });
 
-  test("app window partly over Zen: pops out", async () => {
+  test("smaller app window over part of Zen, same screen and desktop: no PiP", async () => {
+    // covers x 1000..1512, y 200..800: about a fifth of the page
     const env = await loadAutoPip({ front: "safari", windows: [{ app: "safari", x: 1000, y: 200, w: 900, h: 600 }, ZEN] });
+    await env.deactivate();
+    assert.ok(!popped(env), why(env));
+    assert.match(env.lastLog(), /still visible/);
+  });
+
+  test("app window over most of Zen (not maximized): pops out", async () => {
+    const env = await loadAutoPip({ front: "safari", windows: [{ app: "safari", x: 100, y: 80, w: 1300, h: 820 }, ZEN] });
     await env.deactivate();
     assert.ok(popped(env), why(env));
   });
 
-  test("app on another monitor but one of its windows also covers Zen: pops out", async () => {
+  test("several windows in front of Zen that together cover most of it: pops out", async () => {
+    // each covers about a third of the page; overlapping parts count once
+    const env = await loadAutoPip({ front: "safari", windows: [
+      { app: "safari", x: 0, y: 25, w: 600, h: 920 }, { app: "slack", x: 500, y: 25, w: 600, h: 920 }, ZEN] });
+    await env.deactivate();
+    assert.ok(popped(env), why(env));
+  });
+
+  test("the same windows behind Zen don't count", async () => {
+    const env = await loadAutoPip({ front: "safari", windows: [
+      ZEN, { app: "safari", x: 0, y: 25, w: 600, h: 920 }, { app: "slack", x: 500, y: 25, w: 600, h: 920 }] });
+    await env.deactivate();
+    assert.ok(!popped(env), why(env));
+  });
+
+  test("app on another monitor but one of its windows also covers most of Zen: pops out", async () => {
     const env = await loadAutoPip({ front: "safari",
-      windows: [{ app: "safari", x: 1600, y: 40, w: 800, h: 600 }, { app: "safari", x: 100, y: 100, w: 800, h: 600 }, ZEN] });
+      windows: [{ app: "safari", x: 1600, y: 40, w: 800, h: 600 }, { app: "safari", x: 50, y: 60, w: 1400, h: 860 }, ZEN] });
     await env.deactivate();
     assert.ok(popped(env), why(env));
   });
