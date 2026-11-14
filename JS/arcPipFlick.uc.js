@@ -57,14 +57,39 @@
   }
 
   // Dropped partly off the screen (no monitor there): slide back to the nearest edge.
-  function settle() {
-    const s = window.screen, w = window.outerWidth, h = window.outerHeight;
-    const x = window.screenX, y = window.screenY;
+  function onScreenSpot(w = window.outerWidth, h = window.outerHeight) {
+    const s = window.screen, x = window.screenX, y = window.screenY;
     const minX = s.availLeft, maxX = s.availLeft + s.availWidth - w;
     const minY = s.availTop,  maxY = s.availTop + s.availHeight - h;
-    const tx = x < minX ? minX + MARGIN : x > maxX ? maxX - MARGIN : x;
-    const ty = y < minY ? minY + MARGIN : y > maxY ? maxY - MARGIN : y;
-    if (tx !== x || ty !== y) slideTo(tx, ty);
+    return [x < minX ? minX + MARGIN : x > maxX ? maxX - MARGIN : x,
+            y < minY ? minY + MARGIN : y > maxY ? maxY - MARGIN : y];
+  }
+  function settle() {
+    const [tx, ty] = onScreenSpot();
+    if (tx !== window.screenX || ty !== window.screenY) slideTo(tx, ty);
+  }
+
+  // Run fn once `ms` have passed, counted in animation frames.
+  function afterMs(ms, fn) {
+    const t0 = performance.now();
+    const tick = now => { if (now - t0 >= ms) fn(); else requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }
+
+  // Keep the PiP's size around letting go of a drag. When a window is let go of
+  // with the cursor at a screen edge, macOS (window tiling) can shrink it to a
+  // sliver at that edge while it slides back (owner's log, 1.2.7). If the size
+  // changes then, put it back and place the window on screen in one jump.
+  const KEEP_MS = 1500;                 // how long after letting go to guard the size
+  let keep = null;                      // { w, h, until, fixes }
+  function onResizeGuard() {
+    if (!keep || drag || performance.now() > keep.until) return;
+    if (window.outerWidth === keep.w && window.outerHeight === keep.h) return;
+    if (keep.fixes++ >= 3) { log("size: gave up restoring"); keep = null; return; }
+    if (anim) { cancelAnimationFrame(anim); anim = 0; }
+    log(`size: changed to ${window.outerWidth}x${window.outerHeight} after letting go, restoring ${keep.w}x${keep.h}`);
+    window.resizeTo(keep.w, keep.h);
+    window.moveTo(...onScreenSpot(keep.w, keep.h));
   }
 
   function slideTo(tx, ty) {
@@ -75,6 +100,7 @@
       const t = Math.min(1, (now - t0) / DUR), e = ease(t);
       window.moveTo(Math.round(sx + (tx - sx) * e), Math.round(sy + (ty - sy) * e));
       anim = t < 1 ? requestAnimationFrame(step) : 0;
+      if (!anim && keep) keep.until = Math.min(keep.until, performance.now() + 1000);
     };
     anim = requestAnimationFrame(step);
   }
@@ -129,7 +155,9 @@
   function onDown(e) {
     if (e.button !== 0 || drag || e.target?.closest?.(INTERACTIVE)) return;
     drag = { id: e.pointerId, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
+             w: window.outerWidth, h: window.outerHeight,
              moved: false, last: null, samples: [[performance.now(), e.screenX, e.screenY]] };
+    keep = null;
     try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
     if (DEBUG) log(`drag: press on ${where(e.target)} (window dragging there: ${dragging(e.target)}, #controls: ${dragging(document.getElementById?.("controls"))}) at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
   }
@@ -137,7 +165,7 @@
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.screenX - drag.px, dy = e.screenY - drag.py;
     // something else moved the window since our last move (macOS's own drag, a constraint)?
-    if (DEBUG && drag.last && (window.screenX !== drag.last[0] || window.screenY !== drag.last[1]))
+    if (DEBUG && drag.last && (Math.abs(window.screenX - drag.last[0]) > 1 || Math.abs(window.screenY - drag.last[1]) > 1))
       log(`drag: window is at ${window.screenX},${window.screenY}, not where we put it (${drag.last})`);
     if (!drag.moved) {
       if (Math.hypot(dx, dy) < DRAG_MIN) return;
@@ -149,7 +177,7 @@
     const now = performance.now();
     drag.samples.push([now, e.screenX, e.screenY]);
     while (drag.samples.length > 2 && drag.samples[1][0] < now - 2 * RECENT) drag.samples.shift();
-    drag.last = [drag.wx + (e.screenX - drag.px), drag.wy + (e.screenY - drag.py)];
+    drag.last = [Math.round(drag.wx + (e.screenX - drag.px)), Math.round(drag.wy + (e.screenY - drag.py))];
     window.moveTo(...drag.last);
   }
   function onUp(e) {
@@ -170,14 +198,17 @@
       vx = (e.screenX - ref[1]) / dt; vy = (e.screenY - ref[2]) / dt;
     }
     const speed = Math.hypot(vx, vy);
-    log(`drag let go: ${speed.toFixed(2)} px/ms`);
+    const sc = window.screen;
+    log(`drag let go: ${speed.toFixed(2)} px/ms, cursor ${Math.round(e.screenX)},${Math.round(e.screenY)}, window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}, screen ${sc.availLeft},${sc.availTop} ${sc.availWidth}x${sc.availHeight}`);
+    keep = { w: d.w, h: d.h, until: performance.now() + KEEP_MS, fixes: 0 };
     if (e.metaKey) return;                             // Firefox's own Cmd+drag corner snap
     if (speed >= FLING) {
       const dirX = Math.abs(vx) >= AXIS * speed ? Math.sign(vx) : 0;
       const dirY = Math.abs(vy) >= AXIS * speed ? Math.sign(vy) : 0;
       glide(dirX, dirY);
     } else {
-      settle();
+      // a moment later: not in the same instant macOS handles a release at the edge
+      afterMs(150, () => { if (!drag) settle(); });
     }
   }
 
@@ -187,6 +218,7 @@
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
   window.addEventListener("pointercancel", onUp, true);
+  window.addEventListener("resize", onResizeGuard);
   if (DEBUG) {
     window.addEventListener("lostpointercapture", () => log(`drag: lost pointer capture${drag ? " while dragging" : ""}`), true);
     let size = `${window.outerWidth}x${window.outerHeight}`;

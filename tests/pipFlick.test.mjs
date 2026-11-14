@@ -28,6 +28,7 @@ function load(prefs = {}) {
   const listeners = {};
   const moves = [];
   const sheets = [];
+  const resizes = [];
   const captured = new Set();
   let now = 1000;
   let frames = [];   // pending requestAnimationFrame callbacks
@@ -37,6 +38,7 @@ function load(prefs = {}) {
     outerWidth: W, outerHeight: H, screenX: 556, screenY: 300,   // middle of the screen
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     moveTo(x, y) { window.screenX = x; window.screenY = y; moves.push([x, y]); },
+    resizeTo(w, h) { window.outerWidth = w; window.outerHeight = h; resizes.push([w, h]); },
     windowUtils: { AUTHOR_SHEET: 2, loadSheetUsingURIString: (uri, type) => sheets.push(decodeURIComponent(uri)) },
   };
   const document = { documentElement: {
@@ -92,7 +94,10 @@ function load(prefs = {}) {
     pointer(cancel ? "pointercancel" : "pointerup", ...p, { target: on, metaKey });
   }
 
-  return { window, moves, sheets, captured, fire, pointer, BUTTON, scroll, drag, frame, settle,
+  // something outside (macOS) resizes the window
+  const shrink = (w, h) => { window.outerWidth = w; window.outerHeight = h; fire("resize", { type: "resize" }); };
+
+  return { window, moves, resizes, shrink, sheets, captured, fire, pointer, BUTTON, scroll, drag, frame, settle,
            pos: () => [window.screenX, window.screenY] };
 }
 
@@ -320,5 +325,62 @@ describe("setting", () => {
     env.drag(line(1000, 300, 3, 0, 100), { holdMs: 200 });
     env.settle();
     assert.equal(env.moves.length, 0);
+  });
+});
+
+// From the owner's log (1.2.7): let go with the cursor at the right screen edge and the
+// window mostly past it; as it slid back, macOS shrank it frame by frame to 33 x 19
+// at that edge.
+describe("mouse: the PiP keeps its size after you let go", () => {
+  const offRight = env => env.drag(line(1000, 300, 3, 0, 125), { holdMs: 100 });   // x 1375, 263 px off
+
+  test("macOS shrinks it while it slides back: size restored, placed on screen", () => {
+    const env = load();
+    offRight(env);
+    for (let i = 0; i < 12; i++) env.frame();      // the slide has started
+    env.shrink(Math.round(W * 0.9), Math.round(H * 0.9));
+    env.shrink(140, 79);
+    env.shrink(33, 19);
+    env.settle();
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [W, H]);
+    assert.deepEqual(env.pos(), [RIGHT, 300]);
+  });
+
+  test("the slide back waits a moment after letting go (not the same instant as macOS)", () => {
+    const env = load();
+    offRight(env);
+    const n = env.moves.length;
+    for (let i = 0; i < 5; i++) env.frame();       // 80 ms
+    assert.equal(env.moves.length, n, "nothing moved yet");
+    env.settle();
+    assert.deepEqual(env.pos(), [RIGHT, 300]);
+  });
+
+  test("a flick keeps its size too", () => {
+    const env = load();
+    env.drag(line(1100, 300, 40, 0, 8));            // fast, ends past the right edge
+    env.frame(); env.frame();
+    env.shrink(100, 56);
+    env.settle();
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [W, H]);
+    assert.equal(env.window.screenX, RIGHT);
+  });
+
+  test("resizing it yourself later is left alone", () => {
+    const env = load();
+    offRight(env);
+    for (let i = 0; i < 150; i++) env.frame();      // 2.4 s later
+    env.shrink(300, 169);
+    env.settle();
+    assert.equal(env.resizes.length, 0);
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [300, 169]);
+  });
+
+  test("gives up after 3 tries instead of fighting forever", () => {
+    const env = load();
+    offRight(env);
+    for (let i = 0; i < 12; i++) env.frame();
+    for (let i = 0; i < 6; i++) env.shrink(33, 19);
+    assert.equal(env.resizes.length, 3);
   });
 });
