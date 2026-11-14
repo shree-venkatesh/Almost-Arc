@@ -289,6 +289,12 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
 #nav-bar #zen-copy-url-button[arc-moved] + #urlbar-container {
   margin-inline-start: 0 !important;
 }
+/* Video full screen hides the toolbar; the forced visibility above would leave
+   these two floating over the video */
+:root[inDOMFullscreen="true"] #nav-bar #zen-copy-url-button[arc-moved],
+:root[inDOMFullscreen="true"] #nav-bar #zen-site-data-icon-button[arc-moved] {
+  display: none !important;
+}
 
 /* ---------- Static URL pill (arcUrlbarFit.uc.js) ----------
    With the floating address bar (zen.urlbar.behavior = "float") the toolbar
