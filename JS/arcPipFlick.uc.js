@@ -2,7 +2,9 @@
 // @name           Arc PiP flick
 // @description    Two-finger swipe over the Picture-in-Picture window sends it to a
 //                 screen corner in the swipe's direction, like Arc. One swipe = one
-//                 move; click and drag still places it anywhere.
+//                 move; click and drag still places it anywhere. Mouse wheels that
+//                 scroll by lines (a normal wheel, MX Master without smooth
+//                 scrolling) don't move it.
 // @include        chrome://global/content/pictureinpicture/player.xhtml
 // ==/UserScript==
 
@@ -23,6 +25,16 @@
   const MARGIN  = 16;   // gap from the screen edge (px)
   const DUR     = 400;  // glide length (ms)
   const IDLE    = 120;  // ms without scroll events = swipe over
+
+  // almost-arc.pip-debug: log each scroll's kind and deltas, to tell mice from trackpads
+  const DEBUG = Services.prefs.getBoolPref("almost-arc.pip-debug", false);
+  const log = msg => {
+    if (!DEBUG) return;
+    try {
+      IOUtils.writeUTF8(PathUtils.join(PathUtils.profileDir, "almost-arc-pip-debug.log"),
+        `${new Date().toISOString().slice(11, 23)}  [pipFlick] ${msg}\n`, { mode: "appendOrCreate" }).catch(() => {});
+    } catch (e) {}
+  };
 
   let state = "idle", sumX = 0, sumY = 0, prevMag = 0, idle = 0, anim = 0;
 
@@ -49,10 +61,13 @@
   }
 
   function onWheel(e) {
+    log(`wheel mode=${e.deltaMode} dx=${e.deltaX} dy=${e.deltaY}`);
+    // A mouse wheel scrolling by lines: not a swipe, leave the window where it is.
+    // macOS sends a trackpad's (and a Magic Mouse's) scrolls in pixels.
+    if (e.deltaMode !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     let dx = e.deltaX, dy = e.deltaY;
-    if (e.deltaMode === 1) { dx *= 16; dy *= 16; }   // line-based wheels
     dx = -dx; dy = -dy;                              // direction the fingers moved
     const mag = Math.hypot(dx, dy);
 
