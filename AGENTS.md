@@ -38,7 +38,7 @@ macOS (Apple Silicon); Linux is best-effort, Windows is unsupported.
 
 ## Install / test loop
 
-- Zen must be **closed** before `./install.sh` (it refuses otherwise). Restart Zen to pick up changes.
+- Zen must be **closed** before `./install.sh`. On macOS with a terminal to ask in (`/dev/tty`), it asks "Quit Zen and continue? [Y/n]", quits Zen the normal way (AppleScript, never force), and on exit (an `EXIT` trap, even after an error) clears the startup cache and opens Zen again. Without a terminal (.pkg, CI, piped) or on Linux it refuses as before; `ALMOST_ARC_FROM_ZEN=1` skips the check. CI (`pkg.yml`, job `terminal`) checks n / no terminal / y through `script`. Restart Zen to pick up changes.
 - The loader's `config.js` lives in `/Applications/Zen.app/Contents/Resources` and is wiped by Zen updates; rerunning `./install.sh` restores it.
 - `install.sh` writes the recommended **Zen/Firefox** prefs from `preferences.json` between `// >>> almost-arc` and `// <<< almost-arc` in `user.js`; keep that block in sync. Do **not** put `almost-arc.*` prefs there (user.js would reset them every startup): each script registers its own `almost-arc.*` defaults with `Services.prefs.getDefaultBranch("")` so they show in about:config for every install method, and migrates the 1.0.0 `arc-toolbar.*` value if present.
 - Debug logs (off by default) go to the profile dir: `almost-arc.pip-debug` → `almost-arc-pip-debug.log`, `almost-arc.undo-debug` → `almost-arc-undo-debug.log`.
