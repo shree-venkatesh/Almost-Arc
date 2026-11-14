@@ -80,7 +80,8 @@
   {
     "property": "media.videocontrols.picture-in-picture.enable-when-occluded.enabled",
     "label": "Auto PiP when the window is minimized or fully covered (Firefox 159+)",
-    "type": "checkbox"
+    "type": "checkbox",
+    "defaultValue": true
   },
   {
     "property": "almost-arc.pip-on-blur",

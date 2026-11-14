@@ -238,7 +238,7 @@ describe("multiple monitors / Zen still visible", () => {
     assert.ok(!popped(env), why(env));
   });
 
-  test("app window covering all of Zen, same desktop: no PiP", async () => {
+  test("app window covering all of Zen, same desktop: no second PiP from this script (Firefox's enable-when-occluded pops it out)", async () => {
     const env = await loadAutoPip({ front: "safari", windows: [{ app: "safari", x: 0, y: 25, w: 1512, h: 920 }, ZEN] });
     await env.deactivate();
     assert.ok(!popped(env), why(env));

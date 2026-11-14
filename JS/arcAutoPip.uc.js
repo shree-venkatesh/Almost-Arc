@@ -6,7 +6,8 @@
 //                 notifications are background helpers that never become the front
 //                 app, so they don't trigger it. Nor does switching to an app while
 //                 Zen stays on the current desktop (another monitor, or a window over
-//                 part of Zen): only leaving the desktop pops it out.
+//                 part of Zen): only leaving the desktop pops it out. (Fully covered
+//                 is Firefox's enable-when-occluded, which install.sh turns on.)
 //                 macOS only. Pref: almost-arc.pip-on-blur
 // ==/UserScript==
 
@@ -132,9 +133,10 @@
     Math.max(0, Math.min(a.Y + a.Height, b.Y + b.Height) - Math.max(a.Y, b.Y));
 
   // Is this Zen window still on screen, i.e. on the current desktop (Space)? Then
-  // switching apps never pops the video out, however much other windows cover it
-  // (another monitor, side by side, a window over part or all of Zen). Only leaving
-  // the desktop does.
+  // this script doesn't pop the video out (another monitor, side by side, a window
+  // over part of Zen). A window covering all of Zen is Firefox's job: with
+  // enable-when-occluded (install.sh turns it on) it pops out once macOS reports
+  // the window fully covered, and closes when any of it shows again.
   async function zenStillVisible() {
     const me = { X: window.screenX, Y: window.screenY, Width: window.outerWidth, Height: window.outerHeight };
     const wins = await screenWindows();
