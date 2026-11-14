@@ -68,6 +68,7 @@
   }
 
   function slideTo(tx, ty) {
+    log(`slide to ${tx},${ty} from ${window.screenX},${window.screenY}${drag ? " (while dragging!)" : ""}`);
     if (anim) cancelAnimationFrame(anim);
     const sx = window.screenX, sy = window.screenY, t0 = performance.now();
     const step = now => {
@@ -123,25 +124,33 @@
   // controls keep their clicks; anywhere else on the video drags the window
   const INTERACTIVE = "button, input, select, textarea, a, label, [role], #scrubber, .control-item";
   let drag = null;   // { id, px, py, wx, wy, moved, samples: [[time, px, py]] }
+  const where = el => el ? `${el.localName}${el.id ? "#" + el.id : ""}` : "?";
+  const dragging = el => { try { return getComputedStyle(el).getPropertyValue("-moz-window-dragging"); } catch (e) { return "?"; } };
   function onDown(e) {
     if (e.button !== 0 || drag || e.target?.closest?.(INTERACTIVE)) return;
     drag = { id: e.pointerId, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
-             moved: false, samples: [[performance.now(), e.screenX, e.screenY]] };
+             moved: false, last: null, samples: [[performance.now(), e.screenX, e.screenY]] };
     try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
+    if (DEBUG) log(`drag: press on ${where(e.target)} (window dragging there: ${dragging(e.target)}, #controls: ${dragging(document.getElementById?.("controls"))}) at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
   }
   function onMove(e) {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.screenX - drag.px, dy = e.screenY - drag.py;
+    // something else moved the window since our last move (macOS's own drag, a constraint)?
+    if (DEBUG && drag.last && (window.screenX !== drag.last[0] || window.screenY !== drag.last[1]))
+      log(`drag: window is at ${window.screenX},${window.screenY}, not where we put it (${drag.last})`);
     if (!drag.moved) {
       if (Math.hypot(dx, dy) < DRAG_MIN) return;
       drag.moved = true;
+      if (DEBUG) log("drag: started");
       if (anim) { cancelAnimationFrame(anim); anim = 0; }   // grabbed mid-glide
       drag.wx = window.screenX; drag.wy = window.screenY;   // where it is now, if a glide moved it
     }
     const now = performance.now();
     drag.samples.push([now, e.screenX, e.screenY]);
     while (drag.samples.length > 2 && drag.samples[1][0] < now - 2 * RECENT) drag.samples.shift();
-    window.moveTo(drag.wx + (e.screenX - drag.px), drag.wy + (e.screenY - drag.py));
+    drag.last = [drag.wx + (e.screenX - drag.px), drag.wy + (e.screenY - drag.py)];
+    window.moveTo(...drag.last);
   }
   function onUp(e) {
     if (!drag || e.pointerId !== drag.id) return;
@@ -149,7 +158,9 @@
     drag = null;
     try { document.documentElement.releasePointerCapture(e.pointerId); } catch (err) {}
     if (!d.moved) return;                              // a click
-    if (e.type !== "pointerup") { settle(); return; }  // cancelled: just keep it on screen
+    // Cancelled (the system took the pointer): stop following, move nothing. Sliding
+    // back on screen only ever happens when you let go of the mouse button.
+    if (e.type !== "pointerup") { log(`drag: ${e.type}, stopped following (window at ${window.screenX},${window.screenY})`); return; }
     // how fast the pointer moved over the last RECENT ms (0 if it was held still)
     const now = performance.now();
     const ref = d.samples.find(([t]) => t >= now - RECENT);
@@ -176,4 +187,13 @@
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
   window.addEventListener("pointercancel", onUp, true);
+  if (DEBUG) {
+    window.addEventListener("lostpointercapture", () => log(`drag: lost pointer capture${drag ? " while dragging" : ""}`), true);
+    let size = `${window.outerWidth}x${window.outerHeight}`;
+    window.addEventListener("resize", () => {
+      const now = `${window.outerWidth}x${window.outerHeight}`;
+      if (now !== size) log(`window resized ${size} -> ${now}${drag ? " while dragging" : ""} at ${window.screenX},${window.screenY}`);
+      size = now;
+    });
+  }
 })();

@@ -284,9 +284,24 @@ describe("mouse: drag and place (let go slowly)", () => {
     assert.equal(env.captured.size, 0);
   });
 
-  test("drag cancelled by the system: no flick, but kept on screen", () => {
+  test("drag cancelled by the system: stops following, moves nothing more (no flick, no slide back)", () => {
     const env = load();
-    env.drag(line(1000, 300, 30, 0, 12), { cancel: true });   // fast, ends at x 1360
+    env.drag(line(1000, 300, 30, 0, 12), { cancel: true });   // fast, ends at x 1360, off screen
+    const at = env.pos();
+    env.settle();
+    assert.deepEqual(env.pos(), at);
+  });
+
+  test("while the button is held, nothing slides it back, however long it sits off screen", () => {
+    const env = load();
+    const path = line(1000, 300, 5, 0, 80);   // ends at x 1400, 288 px off screen
+    env.pointer("pointerdown", 656, 350);       // 100 px into the window at x 556
+    for (const [x, y] of path) { env.frame(); env.pointer("pointermove", x + 100, y + 50); }
+    const dragged = env.moves.length;
+    for (let i = 0; i < 200; i++) env.frame();   // 3 s, still holding, not moving
+    assert.equal(env.moves.length, dragged, "no moves while held");
+    assert.deepEqual(env.pos(), [1400, 300]);
+    env.pointer("pointerup", 1500, 350);         // let go: now it slides back
     env.settle();
     assert.deepEqual(env.pos(), [RIGHT, 300]);
   });
