@@ -16,7 +16,7 @@ Built and tested on **Zen 1.24.1b (Firefox 159), macOS 13 or later**. Linux most
 - **Centered URL pill.** Sized to the address, domain bright and path dimmed. Click it for Zen's floating address bar, like Arc's command bar. The copy-link button sits beside it and shows a checkmark when you copy.
 - **Arc's sidebar.** Frosted essentials tiles, and a compact mode where the sidebar pops out full height with the window buttons at its top.
 - **Auto Picture-in-Picture.** A playing video pops out when you switch tabs, minimize, switch to another desktop or to an app in full screen, and goes back when you return. Switching to an app while Zen stays on screen (on another monitor, or a window over Zen) doesn't trigger it, nor does system UI (Spotlight, Control Center, screenshots). Desktop and app switching is macOS only.
-- **Arc's PiP controls.** Back to Tab, Minimize (keeps the video playing), 15-second skips and a slim progress bar. Swipe with two fingers on the trackpad to fling the window into a corner.
+- **Arc's PiP controls.** Back to Tab, Minimize (keeps the video playing), 15-second skips and a slim progress bar. Fling the window into a corner with a two-finger swipe on the trackpad, or by letting go of it mid-drag. Let go slowly and it stays where you put it; drop it partly off the screen and it slides back to the edge.
 - **Cmd+Z for tabs.** Reopens tabs you closed, including everything Zen's Clear closed, and puts moved and pinned or unpinned tabs back, within six [safeguards](#tab-undo-safeguards).
 - **Updates from inside Zen.** When a new version is out, Zen shows a bar with an **Update** button, then **Restart Zen**. If a Zen update switched the mod's scripts off, a notice gives you the command that fixes it.
 
@@ -127,7 +127,7 @@ Removing puts everything back, including Zen's own icon.
 | `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes |
 | `almost-arc.pip-on-blur` | on | Auto PiP when you switch to another app or desktop (macOS) |
 | `almost-arc.pip-layout` | on | Arc's PiP controls (Back to Tab, Minimize, Close, 15 s skips) |
-| `almost-arc.pip-flick` | on | Two-finger trackpad swipe over a PiP window sends it to a corner (mouse wheels don't) |
+| `almost-arc.pip-flick` | on | A two-finger trackpad swipe, or letting go mid-drag, flings a PiP window to a corner; a window dropped partly off screen slides back (mouse wheels don't move it) |
 | `almost-arc.domain-only` | off | Show only the domain in the URL pill |
 | `almost-arc.update-notice` | on | Notice when a new release is out (checks GitHub once a day) |
 | `almost-arc.hide-scripts-notice` | off | Hide the "scripts aren't running" notice |
@@ -173,7 +173,7 @@ Found a bug or have an idea? [Send feedback](https://tally.so/r/q5DNBY) with a s
 | `JS/arcCompactSidebar.uc.js` | Arc-style pop-out sidebar and toolbar sidebar button in compact mode |
 | `JS/arcAutoPip.uc.js` | Auto PiP when another app or desktop comes to the front (macOS); closes when you return |
 | `JS/arcPipLayout.uc.js` | Arc's PiP controls |
-| `JS/arcPipFlick.uc.js` | Two-finger swipe sends the PiP window to a corner |
+| `JS/arcPipFlick.uc.js` | Two-finger swipe or a flick-drag sends the PiP window to a corner; brings it back on screen when dropped off the edge |
 | `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards |
 | `JS/arcNotices.uc.js` | The "scripts aren't running" notice and the new-release notice with its Update button |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL |
