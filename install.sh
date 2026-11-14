@@ -32,16 +32,46 @@ if [ -z "$ZEN_APP" ] || [ ! -d "$ZEN_APP" ]; then
   echo "(e.g. /opt/zen) and rerun."; exit 1
 fi
 
-# ALMOST_ARC_FROM_ZEN=1: the Update button in Zen's update notice runs this while
-# Zen is open on purpose (the mod's files take effect when Zen restarts).
-if [ "${ALMOST_ARC_FROM_ZEN:-0}" != 1 ] && pgrep -xi zen >/dev/null 2>&1; then
-  echo "Please quit Zen first (Cmd+Q / close all windows), then rerun."; exit 1
-fi
-
 if [ "$(id -u)" -eq 0 ]; then
   echo "Don't run this with sudo: it would leave files in your Zen profile owned by root."
   echo "Run it as yourself; it asks for your password itself when it needs it."
   exit 1
+fi
+
+# ALMOST_ARC_FROM_ZEN=1: the Update button in Zen's update notice runs this while
+# Zen is open on purpose (the mod's files take effect when Zen restarts).
+# Otherwise Zen must be closed. On macOS, run from a Terminal, ask to quit it (the
+# normal way, like Cmd+Q, so Zen saves your windows and tabs; never force-quit) and
+# open it again at the end. Without a Terminal to ask in (the .pkg, CI), or on
+# Linux, stop as before.
+zen_running() { pgrep -xi zen >/dev/null 2>&1; }
+reopen_zen() {
+  # Same as about:support > Clear startup cache, so Zen loads the new scripts.
+  rm -rf "$HOME/Library/Caches/zen/Profiles/"*/startupCache 2>/dev/null || true
+  echo "Opening Zen again."
+  open "${ZEN_APP%/Contents/Resources}" 2>/dev/null || open -a Zen 2>/dev/null || echo "Open Zen to see it."
+}
+REOPEN_ZEN=0
+if [ "${ALMOST_ARC_FROM_ZEN:-0}" != 1 ] && zen_running; then
+  if [ "$(uname)" = Darwin ] && { : </dev/tty; } 2>/dev/null; then
+    printf 'Zen is open and needs to quit. Your windows and tabs are saved as usual.\nQuit Zen and continue? [Y/n] ' >/dev/tty
+    ans=""; read -r ans </dev/tty || ans=n
+    case "$ans" in
+      ""|[Yy]*) ;;
+      *) echo "Cancelled. Quit Zen (Cmd+Q), then run this again."; exit 1 ;;
+    esac
+    osascript -e 'tell application "Zen" to quit' >/dev/null 2>&1 || true
+    echo "Quitting Zen (if it asks something, like closing tabs, answer it)..."
+    for _ in $(seq 1 60); do zen_running || break; sleep 1; done
+    if zen_running; then
+      echo "Zen is still open. Quit it (Cmd+Q), then run this again."; exit 1
+    fi
+    REOPEN_ZEN=1
+    # open it again however this ends (done, or stopped by an error)
+    trap reopen_zen EXIT
+  else
+    echo "Please quit Zen first (Cmd+Q / close all windows), then rerun."; exit 1
+  fi
 fi
 
 echo "Profile: $ZEN_PROFILE"
@@ -147,5 +177,9 @@ user_pref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled",
 PREFS
 
 echo
-echo "Done. Open Zen -> about:support -> 'Clear startup cache', and let it restart."
+if [ "$REOPEN_ZEN" = 1 ]; then
+  echo "Done."   # Zen opens again on exit (reopen_zen)
+else
+  echo "Done. Open Zen -> about:support -> 'Clear startup cache', and let it restart."
+fi
 echo "Note: Zen updates remove the loader from the app folder - rerun this script after updating."

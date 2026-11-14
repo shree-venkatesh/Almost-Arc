@@ -152,6 +152,41 @@ jobs:
       - name: ./install.sh again (Zen already there)
         run: ./install.sh | tee out.txt && ! grep -q "downloading it" out.txt
 
+      # Zen open: from a Terminal, install.sh asks to quit it, then opens it again.
+      # `script` gives install.sh a terminal to ask in (CI steps have none). The
+      # answer is typed a few seconds in, like a person would: typed before the
+      # question, script sends it (and end-of-input) before the terminal is ready.
+      - name: Zen open, answer n - stops, Zen stays open
+        timeout-minutes: 5
+        run: |
+          open -a Zen
+          for _ in $(seq 1 60); do pgrep -x zen >/dev/null && break; sleep 1; done
+          pgrep -x zen; sleep 10   # let it finish starting
+          { sleep 5; printf 'n\n'; sleep 20; } | script -q /dev/null ./install.sh | tee out.txt || true
+          grep -q "Cancelled" out.txt
+          pgrep -x zen
+
+      - name: Zen open, no terminal to ask in - stops as before
+        run: |
+          if ./install.sh </dev/null >out.txt 2>&1; then cat out.txt; echo "should have stopped"; exit 1; fi
+          cat out.txt; grep -q "Please quit Zen first" out.txt
+          pgrep -x zen
+
+      - name: Zen open, answer y - quits Zen, installs, opens Zen again
+        timeout-minutes: 5
+        run: |
+          P="$HOME/Library/Application Support/zen"
+          REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$P/profiles.ini")"
+          rm "$P/$REL/chrome/JS/arcAutoPip.uc.js"   # to see that it installs again
+          OLD="$(pgrep -x zen)"
+          { sleep 5; printf 'y\n'; sleep 90; } | script -q /dev/null ./install.sh | tee out.txt || true
+          grep -q "Opening Zen again" out.txt
+          test -f "$P/$REL/chrome/JS/arcAutoPip.uc.js"
+          for _ in $(seq 1 60); do NEW="$(pgrep -x zen || true)"; [ -n "$NEW" ] && [ "$NEW" != "$OLD" ] && break; sleep 1; done
+          echo "Zen before: $OLD, after: $NEW"; test -n "$NEW"; test "$NEW" != "$OLD"
+          osascript -e 'tell application "Zen" to quit' || true
+          for _ in $(seq 1 30); do pgrep -x zen >/dev/null || break; sleep 1; done
+
       - name: ./uninstall.sh puts Zen's own icon back
         run: |
           # icon state: the hidden Icon\r file and the kHasCustomIcon Finder flag
