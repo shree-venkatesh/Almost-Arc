@@ -80,16 +80,29 @@
   // with the cursor at a screen edge, macOS (window tiling) can shrink it to a
   // sliver at that edge while it slides back (owner's log, 1.2.7). If the size
   // changes then, put it back and place the window on screen in one jump.
-  const KEEP_MS = 1500;                 // how long after letting go to guard the size
-  let keep = null;                      // { w, h, until, fixes }
+  const KEEP_MS = 3000;                 // how long after letting go to guard the size
+  const STILL_MS = 200;                 // restore once the size has stopped changing this long
+  let keep = null;                      // { w, h, until, fixes, timer }
+  // macOS animates the shrink over ~300 ms; resizing during it is undone by the next
+  // animation frame (1.2.8 log: 3 tries used up in 50 ms). So wait for it to stop,
+  // then restore once.
   function onResizeGuard() {
     if (!keep || drag || performance.now() > keep.until) return;
     if (window.outerWidth === keep.w && window.outerHeight === keep.h) return;
-    if (keep.fixes++ >= 3) { log("size: gave up restoring"); keep = null; return; }
-    if (anim) { cancelAnimationFrame(anim); anim = 0; }
-    log(`size: changed to ${window.outerWidth}x${window.outerHeight} after letting go, restoring ${keep.w}x${keep.h}`);
-    window.resizeTo(keep.w, keep.h);
-    window.moveTo(...onScreenSpot(keep.w, keep.h));
+    if (anim) { cancelAnimationFrame(anim); anim = 0; }   // a slide can't win against it
+    if (keep.timer) cancelAnimationFrame(keep.timer);
+    const k = keep, changed = performance.now();
+    const tick = now => {
+      if (keep !== k || drag) return;
+      if (now - changed < STILL_MS) { k.timer = requestAnimationFrame(tick); return; }
+      k.timer = 0;
+      if (window.outerWidth === k.w && window.outerHeight === k.h) return;
+      if (k.fixes++ >= 3) { log("size: gave up restoring"); keep = null; return; }
+      log(`size: changed to ${window.outerWidth}x${window.outerHeight} after letting go, restoring ${k.w}x${k.h}`);
+      window.resizeTo(k.w, k.h);
+      window.moveTo(...onScreenSpot(k.w, k.h));
+    };
+    k.timer = requestAnimationFrame(tick);
   }
 
   function slideTo(tx, ty) {
@@ -100,7 +113,6 @@
       const t = Math.min(1, (now - t0) / DUR), e = ease(t);
       window.moveTo(Math.round(sx + (tx - sx) * e), Math.round(sy + (ty - sy) * e));
       anim = t < 1 ? requestAnimationFrame(step) : 0;
-      if (!anim && keep) keep.until = Math.min(keep.until, performance.now() + 1000);
     };
     anim = requestAnimationFrame(step);
   }
@@ -141,38 +153,32 @@
   // with the cursor at a screen edge, which squashes the PiP. So the video area is
   // made non-draggable and the window follows the pointer.
   const DRAG_MIN = 3;   // px the pointer moves before a press becomes a drag (else it's a click)
-  // Inline styles, not a sheet: -moz-window-dragging is a chrome-only property, and
-  // a data: sheet isn't chrome, so Firefox dropped the rule and macOS kept dragging
-  // the window under ours (1.2.5-1.2.7: jitter, tiling squash). Inline styles are
-  // parsed with this chrome page's privileges.
-  const NO_DRAG = ["body", "#controls", "#controls-bottom-gradient"];
-  function noNativeDrag(why) {
-    try {
-      for (const sel of NO_DRAG)
-        for (const el of document.querySelectorAll(sel)) el.style.setProperty("-moz-window-dragging", "no-drag", "important");
-      if (DEBUG) {
-        const c = document.getElementById("controls");
-        log(`no native drag (${why}): #controls inline "${c?.style.getPropertyValue("-moz-window-dragging")}", computed "${dragging(c)}"`);
-      }
-    } catch (e) { log(`no native drag failed: ${e}`); }
-  }
+  // A user sheet: -moz-window-dragging is a chrome-only property. Firefox drops
+  // it from author sheets that aren't chrome:// (1.2.5-1.2.7 used a data: author
+  // sheet) and from inline styles (1.2.8), so macOS kept dragging the window
+  // under ours (jitter, and tiling squashed it on release at a screen edge).
+  // User and agent sheets may use chrome-only properties, and a user !important
+  // rule beats player.css's `-moz-window-dragging: drag`.
+  try {
+    window.windowUtils.loadSheetUsingURIString("data:text/css;charset=utf-8," + encodeURIComponent(
+      "#controls, #controls-bottom-gradient, body { -moz-window-dragging: no-drag !important; }"),
+      window.windowUtils.USER_SHEET);
+    if (DEBUG) log("no native drag: user sheet loaded");
+  } catch (e) { log(`no native drag: sheet failed: ${e}`); }
 
   // controls keep their clicks; anywhere else on the video drags the window
   const INTERACTIVE = "button, input, select, textarea, a, label, [role], #scrubber, .control-item";
   let drag = null;   // { id, px, py, wx, wy, moved, samples: [[time, px, py]] }
   const where = el => el ? `${el.localName}${el.id ? "#" + el.id : ""}` : "?";
-  const dragging = el => { try { return getComputedStyle(el).getPropertyValue("-moz-window-dragging"); } catch (e) { return "?"; } };
-  noNativeDrag("start");
-  window.addEventListener("DOMContentLoaded", () => noNativeDrag("DOMContentLoaded"));
-  window.addEventListener("load", () => noNativeDrag("load"));
   function onDown(e) {
     if (e.button !== 0 || drag || e.target?.closest?.(INTERACTIVE)) return;
     drag = { id: e.pointerId, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
              w: window.outerWidth, h: window.outerHeight,
              moved: false, last: null, samples: [[performance.now(), e.screenX, e.screenY]] };
+    if (keep?.timer) cancelAnimationFrame(keep.timer);
     keep = null;
     try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
-    if (DEBUG) log(`drag: press on ${where(e.target)} (window dragging there: ${dragging(e.target)}, #controls: ${dragging(document.getElementById?.("controls"))}) at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
+    if (DEBUG) log(`drag: press on ${where(e.target)} at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
   }
   function onMove(e) {
     if (!drag || e.pointerId !== drag.id) return;

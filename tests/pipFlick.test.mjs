@@ -39,7 +39,7 @@ function load(prefs = {}) {
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     moveTo(x, y) { window.screenX = x; window.screenY = y; moves.push([x, y]); },
     resizeTo(w, h) { window.outerWidth = w; window.outerHeight = h; resizes.push([w, h]); },
-    windowUtils: { AUTHOR_SHEET: 2, loadSheetUsingURIString: (uri, type) => sheets.push(decodeURIComponent(uri)) },
+    windowUtils: { AGENT_SHEET: 0, USER_SHEET: 1, AUTHOR_SHEET: 2, loadSheetUsingURIString: (uri, type) => sheets.push([decodeURIComponent(uri), type]) },
   };
   // elements whose inline style the script sets: selector -> { prop: [value, priority] }
   const inline = {};
@@ -319,14 +319,14 @@ describe("mouse: drag and place (let go slowly)", () => {
     assert.deepEqual(env.pos(), [RIGHT, 300]);
   });
 
-  // A data: sheet can't set -moz-window-dragging (chrome-only property): Firefox
-  // dropped it and macOS kept dragging the window under ours (owner's 1.2.7 log).
-  test("macOS's own window dragging is turned off on the video, with inline styles", () => {
+  // -moz-window-dragging is chrome-only: Firefox drops it from a data: author sheet
+  // (1.2.5-1.2.7) and from inline styles (1.2.8 log: inline ""), so macOS kept
+  // dragging the window under ours. A user sheet may use it.
+  test("macOS's own window dragging is turned off on the video, with a user sheet", () => {
     const env = load();
-    for (const sel of ["body", "#controls", "#controls-bottom-gradient"])
-      assert.deepEqual(env.inline[sel]?.["-moz-window-dragging"], ["no-drag", "important"], sel);
-  });
-});
+    assert.ok(env.sheets.some(([css, type]) => type === 1 &&
+      /#controls[^{]*\{[^}]*-moz-window-dragging:\s*no-drag\s*!important/.test(css)), JSON.stringify(env.sheets));
+  });});
 
 describe("setting", () => {
   test("off with almost-arc.pip-flick = false: no swipe, no flick, no snapping back", async () => {
@@ -380,7 +380,7 @@ describe("mouse: the PiP keeps its size after you let go", () => {
   test("resizing it yourself later is left alone", () => {
     const env = load();
     offRight(env);
-    for (let i = 0; i < 150; i++) env.frame();      // 2.4 s later
+    for (let i = 0; i < 220; i++) env.frame();      // 3.5 s later
     env.shrink(300, 169);
     env.settle();
     assert.equal(env.resizes.length, 0);
@@ -390,8 +390,20 @@ describe("mouse: the PiP keeps its size after you let go", () => {
   test("gives up after 3 tries instead of fighting forever", () => {
     const env = load();
     offRight(env);
-    for (let i = 0; i < 12; i++) env.frame();
-    for (let i = 0; i < 6; i++) env.shrink(33, 19);
+    for (let n = 0; n < 6; n++) { env.shrink(33, 19); for (let i = 0; i < 20; i++) env.frame(); }
     assert.equal(env.resizes.length, 3);
+  });
+
+  // Owner's 1.2.8 log: macOS shrank it one step per frame for ~300 ms, starting
+  // right after release; restoring on each step used up every try in 50 ms.
+  test("macOS's shrink animation: waits for it to end, then restores once", () => {
+    const env = load();
+    offRight(env);
+    let w = W;
+    while (w > 33) { w = Math.max(33, Math.round(w * 0.8)); env.shrink(w, Math.round(w * H / W)); env.frame(); }
+    env.settle();
+    assert.equal(env.resizes.length, 1, JSON.stringify(env.resizes));
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [W, H]);
+    assert.deepEqual(env.pos(), [RIGHT, 300]);
   });
 });
