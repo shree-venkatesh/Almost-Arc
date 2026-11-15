@@ -41,9 +41,17 @@ function load(prefs = {}) {
     resizeTo(w, h) { window.outerWidth = w; window.outerHeight = h; resizes.push([w, h]); },
     windowUtils: { AUTHOR_SHEET: 2, loadSheetUsingURIString: (uri, type) => sheets.push(decodeURIComponent(uri)) },
   };
-  const document = { documentElement: {
-    setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id),
-  } };
+  // elements whose inline style the script sets: selector -> { prop: [value, priority] }
+  const inline = {};
+  const el = sel => ({ style: {
+    setProperty: (k, v, pri) => { (inline[sel] ||= {})[k] = [v, pri]; },
+    getPropertyValue: k => inline[sel]?.[k]?.[0] ?? "",
+  } });
+  const document = {
+    documentElement: { setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id) },
+    querySelectorAll: sel => [el(sel)],
+    getElementById: id => el("#" + id),
+  };
   const context = {
     window, document, console,
     Services: { prefs: {
@@ -97,7 +105,7 @@ function load(prefs = {}) {
   // something outside (macOS) resizes the window
   const shrink = (w, h) => { window.outerWidth = w; window.outerHeight = h; fire("resize", { type: "resize" }); };
 
-  return { window, moves, resizes, shrink, sheets, captured, fire, pointer, BUTTON, scroll, drag, frame, settle,
+  return { window, moves, resizes, shrink, sheets, inline, captured, fire, pointer, BUTTON, scroll, drag, frame, settle,
            pos: () => [window.screenX, window.screenY] };
 }
 
@@ -311,9 +319,12 @@ describe("mouse: drag and place (let go slowly)", () => {
     assert.deepEqual(env.pos(), [RIGHT, 300]);
   });
 
-  test("macOS's own window dragging is turned off on the video", () => {
+  // A data: sheet can't set -moz-window-dragging (chrome-only property): Firefox
+  // dropped it and macOS kept dragging the window under ours (owner's 1.2.7 log).
+  test("macOS's own window dragging is turned off on the video, with inline styles", () => {
     const env = load();
-    assert.ok(env.sheets.some(css => /#controls[^{]*\{[^}]*-moz-window-dragging:\s*no-drag/.test(css)), env.sheets.join("\n"));
+    for (const sel of ["body", "#controls", "#controls-bottom-gradient"])
+      assert.deepEqual(env.inline[sel]?.["-moz-window-dragging"], ["no-drag", "important"], sel);
   });
 });
 

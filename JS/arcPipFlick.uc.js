@@ -141,17 +141,30 @@
   // with the cursor at a screen edge, which squashes the PiP. So the video area is
   // made non-draggable and the window follows the pointer.
   const DRAG_MIN = 3;   // px the pointer moves before a press becomes a drag (else it's a click)
-  try {
-    window.windowUtils.loadSheetUsingURIString("data:text/css;charset=utf-8," + encodeURIComponent(
-      "#controls, #controls-bottom-gradient, body { -moz-window-dragging: no-drag !important; }"),
-      window.windowUtils.AUTHOR_SHEET);
-  } catch (e) { log(`drag sheet failed: ${e}`); }
+  // Inline styles, not a sheet: -moz-window-dragging is a chrome-only property, and
+  // a data: sheet isn't chrome, so Firefox dropped the rule and macOS kept dragging
+  // the window under ours (1.2.5-1.2.7: jitter, tiling squash). Inline styles are
+  // parsed with this chrome page's privileges.
+  const NO_DRAG = ["body", "#controls", "#controls-bottom-gradient"];
+  function noNativeDrag(why) {
+    try {
+      for (const sel of NO_DRAG)
+        for (const el of document.querySelectorAll(sel)) el.style.setProperty("-moz-window-dragging", "no-drag", "important");
+      if (DEBUG) {
+        const c = document.getElementById("controls");
+        log(`no native drag (${why}): #controls inline "${c?.style.getPropertyValue("-moz-window-dragging")}", computed "${dragging(c)}"`);
+      }
+    } catch (e) { log(`no native drag failed: ${e}`); }
+  }
 
   // controls keep their clicks; anywhere else on the video drags the window
   const INTERACTIVE = "button, input, select, textarea, a, label, [role], #scrubber, .control-item";
   let drag = null;   // { id, px, py, wx, wy, moved, samples: [[time, px, py]] }
   const where = el => el ? `${el.localName}${el.id ? "#" + el.id : ""}` : "?";
   const dragging = el => { try { return getComputedStyle(el).getPropertyValue("-moz-window-dragging"); } catch (e) { return "?"; } };
+  noNativeDrag("start");
+  window.addEventListener("DOMContentLoaded", () => noNativeDrag("DOMContentLoaded"));
+  window.addEventListener("load", () => noNativeDrag("load"));
   function onDown(e) {
     if (e.button !== 0 || drag || e.target?.closest?.(INTERACTIVE)) return;
     drag = { id: e.pointerId, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
