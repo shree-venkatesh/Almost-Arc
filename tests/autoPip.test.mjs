@@ -257,14 +257,14 @@ describe("multiple monitors / Zen still visible", () => {
                 [{ app: "finder", x: 1600, y: 40, w: 800, h: 600 }]] });    // after the animation: gone
     await env.deactivate();
     assert.ok(popped(env), why(env));
-    assert.equal(env.calls.osascript, 2);
+    assert.equal(env.calls.windows, 2);
   });
 
   test("desktop (Space) switch: Zen already off screen, pops out right away", async () => {
     const env = await loadAutoPip({ front: "finder", windows: [{ app: "finder", x: 300, y: 40, w: 800, h: 600 }] });
     await env.deactivate();
     assert.ok(popped(env), why(env));
-    assert.equal(env.calls.osascript, 1);
+    assert.equal(env.calls.windows, 1);
   });
 
   test("window lookup fails: pops out as before", async () => {
@@ -282,11 +282,25 @@ describe("multiple monitors / Zen still visible", () => {
     assert.ok(!popped(env), why(env));
   });
 
+  // Owner's 1.2.9 log: ~0.7 s after every switch away, right after the osascript
+  // window check, macOS made Zen active again (Zen jumped in front of the app you
+  // picked, then dropped behind it). The window list now comes from CoreGraphics
+  // inside Zen, with no extra process.
+  test("the window check starts no osascript (it made macOS bring Zen back in front)", async () => {
+    const env = await loadAutoPip({ front: "safari", windows: [{ app: "safari", x: 1600, y: 40, w: 800, h: 600 }, ZEN] });
+    await env.deactivate();
+    assert.ok(!popped(env), why(env));
+    assert.equal(env.calls.windows, 2, "looked twice");
+    assert.deepEqual([...new Set(env.calls.subprocess)], ["/usr/bin/lsappinfo"], "only lsappinfo runs");
+    assert.equal(env.calls.cgOptions, 1 | 16, "on-screen windows, no desktop elements");
+    assert.equal(env.calls.released, 2, "each window list is released");
+  });
+
   test("system UI on the other monitor still never triggers it", async () => {
     const env = await loadAutoPip({ front: "controlCenter", windows: [ZEN] });
     await env.deactivate();
     assert.ok(!popped(env), why(env));
-    assert.equal(env.calls.osascript, 0, "no window lookup needed");
+    assert.equal(env.calls.windows, 0, "no window lookup needed");
   });
 });
 

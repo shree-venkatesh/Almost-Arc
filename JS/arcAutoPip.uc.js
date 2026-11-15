@@ -124,22 +124,60 @@
     return { zen, real, pid, front: `${bundle || front} (${type || "?"})` };
   }
 
-  // On-screen windows, front to back, from CoreGraphics (via osascript; window
-  // positions need no permission, only window titles would).
-  const OSASCRIPT = "/usr/bin/osascript";
-  const WINDOWS_JXA = `ObjC.import("CoreGraphics");
-    function run() {
-      var list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1 | 16, 0))) || [];
-      return JSON.stringify(list.map(function (w) {
-        return { pid: w.kCGWindowOwnerPID, layer: w.kCGWindowLayer, alpha: w.kCGWindowAlpha, b: w.kCGWindowBounds };
-      }));
-    }`;
+  // On-screen windows, front to back, from CoreGraphics, called in Zen itself via
+  // ctypes (window positions need no permission, only titles would). Until 1.2.9
+  // this ran `osascript -l JavaScript` with the ObjC bridge: right after each such
+  // run macOS made Zen the active app again, ~0.7 s after you'd switched away, so
+  // Zen jumped in front of the app you'd picked, then dropped behind it when you
+  // clicked that app again (owner's 1.2.9 log, with iTerm, Discord, Spotify).
+  let cg = null;
+  function openCG() {
+    if (cg) return cg;
+    const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
+    const CF = ctypes.open("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation");
+    const CGL = ctypes.open("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
+    const P = ctypes.voidptr_t, ABI = ctypes.default_abi;
+    const CGRect = new ctypes.StructType("CGRect",
+      [{ x: ctypes.double }, { y: ctypes.double }, { w: ctypes.double }, { h: ctypes.double }]);
+    cg = {
+      ctypes, CGRect,
+      list: CGL.declare("CGWindowListCopyWindowInfo", ABI, P, ctypes.uint32_t, ctypes.uint32_t),
+      rect: CGL.declare("CGRectMakeWithDictionaryRepresentation", ABI, ctypes.bool, P, CGRect.ptr),
+      count: CF.declare("CFArrayGetCount", ABI, ctypes.int32_t, P),          // CFIndex; counts fit in 32 bits
+      at: CF.declare("CFArrayGetValueAtIndex", ABI, P, P, ctypes.long),
+      get: CF.declare("CFDictionaryGetValue", ABI, P, P, P),
+      num: CF.declare("CFNumberGetValue", ABI, ctypes.bool, P, ctypes.long, P),
+      release: CF.declare("CFRelease", ABI, ctypes.void_t, P),
+      key: {
+        pid: CGL.declare("kCGWindowOwnerPID", P), layer: CGL.declare("kCGWindowLayer", P),
+        alpha: CGL.declare("kCGWindowAlpha", P), bounds: CGL.declare("kCGWindowBounds", P),
+      },
+    };
+    return cg;
+  }
   async function screenWindows() {
-    const proc = await Subprocess.call({ command: OSASCRIPT, arguments: ["-l", "JavaScript", "-e", WINDOWS_JXA] });
-    let out = "", chunk;
-    while ((chunk = await proc.stdout.readString())) out += chunk;
-    await proc.wait();
-    return JSON.parse(out).filter(w => w.layer === 0 && w.alpha !== 0 && w.b);   // normal app windows
+    const c = openCG(), { ctypes } = c;
+    const number = (dict, key, double) => {
+      const v = dict && c.get(dict, key);
+      if (!v || v.isNull()) return undefined;
+      const out = double ? ctypes.double(0) : ctypes.int32_t(0);
+      // kCFNumberDoubleType 13, kCFNumberSInt32Type 3
+      return c.num(v, double ? 13 : 3, ctypes.cast(out.address(), ctypes.voidptr_t)) ? out.value : undefined;
+    };
+    const arr = c.list(1 | 16, 0);   // on screen only, no desktop elements
+    if (!arr || arr.isNull()) throw new Error("CGWindowListCopyWindowInfo returned nothing");
+    const wins = [];
+    try {
+      for (let i = 0, n = c.count(arr); i < n; i++) {
+        const d = c.at(arr, i);
+        const b = c.get(d, c.key.bounds);
+        const r = new c.CGRect();
+        if (!b || b.isNull() || !c.rect(b, r.address())) continue;
+        wins.push({ pid: number(d, c.key.pid), layer: number(d, c.key.layer), alpha: number(d, c.key.alpha, true),
+                    b: { X: r.x, Y: r.y, Width: r.w, Height: r.h } });
+      }
+    } finally { c.release(arr); }
+    return wins.filter(w => w.layer === 0 && w.alpha !== 0);   // normal app windows
   }
   const overlap = (a, b) =>
     Math.max(0, Math.min(a.X + a.Width, b.X + b.Width) - Math.max(a.X, b.X)) *

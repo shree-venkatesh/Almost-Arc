@@ -60,14 +60,14 @@ export async function loadAutoPip(opts = {}) {
   const fronts = [].concat(o.front);
   // fresh per test: the debug timeline patches its prototype
   const LauncherParent = class { receiveMessage(msg) { return `handled ${msg.name}`; } };
-  const calls = { lsappinfo: [], osascript: 0 };
+  const calls = { lsappinfo: [], windows: 0, released: 0, subprocess: [] };
   let lastFront = [].concat(o.front)[0];
   const toggles = [];
   const logs = [];
   const prefs = new Map(Object.entries({ "almost-arc.pip-debug": true, ...o.prefs }));
   const defaults = new Map();
 
-  // ---- macOS: lsappinfo + osascript through Subprocess ----
+  // ---- macOS: lsappinfo through Subprocess, the window list through ctypes ----
   function lsappinfo(args) {
     calls.lsappinfo.push(args.join(" "));
     if (o.lsappinfoFails) throw new Error("lsappinfo: launch failed");
@@ -86,23 +86,48 @@ export async function loadAutoPip(opts = {}) {
     }
     throw new Error(`unexpected lsappinfo ${args.join(" ")}`);
   }
-  function osascript() {
-    calls.osascript++;
-    if (o.windows === "fail") throw new Error("osascript failed");
+  // on-screen windows, as CGWindowListCopyWindowInfo would list them
+  function cgWindowList() {
+    calls.windows++;
+    if (o.windows === "fail") throw new Error("CGWindowListCopyWindowInfo failed");
     const W = window;
     const zenRect = { x: W.screenX, y: W.screenY, w: W.outerWidth, h: W.outerHeight };
     let list = o.windows ?? [{ app: lastFront, ...zenRect }];   // Zen not on this desktop
     if (Array.isArray(list[0])) list = o.windows.length > 1 ? o.windows.shift() : o.windows[0];
-    return JSON.stringify(list.map(w => ({
-      pid: APPS[w.app].pid, layer: w.layer ?? 0, alpha: 1,
-      b: { X: w.x, Y: w.y, Width: w.w, Height: w.h },
-    })));
+    return list.map(w => ({ pid: APPS[w.app].pid, layer: w.layer ?? 0, alpha: 1, b: { X: w.x, Y: w.y, Width: w.w, Height: w.h } }));
   }
+  // A fake js-ctypes with just what arcAutoPip's CoreGraphics lookup uses:
+  // CF objects are plain JS values, pointers are { isNull, v }.
+  const ptr = v => ({ v, isNull: () => v == null });
+  const KEYS = { kCGWindowOwnerPID: "pid", kCGWindowLayer: "layer", kCGWindowAlpha: "alpha", kCGWindowBounds: "b" };
+  const scalar = () => (v = 0) => { const c = { value: v, address: () => c }; return c; };
+  const NATIVE = {
+    CGWindowListCopyWindowInfo: (opts, id) => { calls.cgOptions = opts; return ptr(cgWindowList()); },
+    CGRectMakeWithDictionaryRepresentation: (d, out) => { Object.assign(out, { x: d.v.X, y: d.v.Y, w: d.v.Width, h: d.v.Height }); return true; },
+    CFArrayGetCount: a => a.v.length,
+    CFArrayGetValueAtIndex: (a, i) => ptr(a.v[i]),
+    CFDictionaryGetValue: (d, k) => ptr(d.v[k]),
+    CFNumberGetValue: (n, type, out) => { out.value = n.v; return true; },
+    CFRelease: a => { calls.released++; },
+  };
+  const ctypes = {
+    default_abi: "abi", voidptr_t: "void*", uint32_t: "u32", int32_t: scalar(), long: "long", bool: "bool", void_t: "void",
+    double: scalar(),
+    cast: x => x,
+    StructType: function () { const T = function () { const r = { x: 0, y: 0, w: 0, h: 0, address: () => r }; return r; }; T.ptr = "ptr"; return T; },
+    open: path => ({
+      declare(name) {
+        if (name in KEYS) return KEYS[name];
+        if (!(name in NATIVE)) throw new Error(`unexpected symbol ${name}`);
+        return NATIVE[name];
+      },
+    }),
+  };
   const Subprocess = {
     async call({ command, arguments: args }) {
+      calls.subprocess.push(command);
       let out;
       if (command === "/usr/bin/lsappinfo") out = lsappinfo(args);
-      else if (command === "/usr/bin/osascript") out = osascript(args);
       else throw new Error(`unexpected command ${command}`);
       let sent = false;
       return {
@@ -195,6 +220,7 @@ export async function loadAutoPip(opts = {}) {
     ChromeUtils: {
       importESModule(url) {
         if (url.endsWith("Subprocess.sys.mjs")) return { Subprocess };
+        if (url.endsWith("ctypes.sys.mjs")) return { ctypes };
         if (url.endsWith("PictureInPicture.sys.mjs"))
           return { PictureInPicture: { weakAutoPipBrowserToParent: autoPipped, weakWinToBrowser: winToBrowser },
                    PictureInPictureLauncherParent: LauncherParent };
