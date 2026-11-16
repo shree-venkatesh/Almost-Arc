@@ -130,8 +130,8 @@ main() {
     *)
       echo "Usage: almost-arc <command>"
       echo
-      echo "  install     Install Almost Arc into Zen again, e.g. after a Zen update (quit Zen first)"
-      echo "  update      Download the latest Almost Arc and install it (quit Zen first)"
+      echo "  install     Install Almost Arc into Zen again, e.g. after a Zen update (asks to quit Zen if it's open)"
+      echo "  update      Download the latest Almost Arc and install it (asks to quit Zen if it's open)"
       echo "  uninstall   Remove Almost Arc from Zen, and this command"
       echo "  --version   Print the installed version"
       echo

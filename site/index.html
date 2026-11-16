@@ -586,7 +586,7 @@ code { font: 12.5px var(--mono); background: var(--chip); padding: 2px 6px; bord
           <pre><span class="p">$ </span>curl -fsSL https://almostarc.net/install.sh | bash</pre>
           <button class="copy" type="button" data-copy="curl -fsSL https://almostarc.net/install.sh | bash" data-goatcounter-click="install-curl-copy" data-goatcounter-title="Copied curl command">Copy</button>
         </div>
-        <p class="note">Quit Zen first. Later, <code>almost-arc update</code> updates it and <code>almost-arc uninstall</code> removes it.</p>
+        <p class="note">If Zen is open, it asks to quit it and opens it again afterwards. Later, <code>almost-arc update</code> updates it and <code>almost-arc uninstall</code> removes it.</p>
 
         <p class="label">With Sine</p>
         <p>In <a href="https://github.com/CosmoCreeper/Sine">Sine</a>, install <code>shree-venkatesh/Almost-Arc</code>. Sine keeps it updated.</p>
@@ -610,11 +610,28 @@ code { font: 12.5px var(--mono); background: var(--chip); padding: 2px 6px; bord
       <section class="view" id="view-whats-new" data-view="whats-new" hidden>
         <h2>What's new</h2>
         <p class="sub">Every release, newest first.</p>
+        <article class="rel" id="v1.2.3">
+          <div class="rel-when">
+            <a class="rel-ver" href="https://github.com/shree-venkatesh/Almost-Arc/releases/tag/v1.2.3">1.2.3</a>
+            <time class="rel-date" datetime="2026-11-15">Nov 15, 2026</time>
+            <span class="rel-latest">Latest</span>
+          </div>
+          <div class="rel-body">
+            <h3>Fling the PiP, and Zen stays put</h3>
+            <ul>
+            <li><span class="kind new">New</span><b>Drag and flick the Picture-in-Picture window</b> with the mouse, like Arc. Let go while moving and it glides to that corner; let go slowly and it stays.</li>
+            <li><span class="kind new">New</span><b>Updating offers to quit Zen</b> if it's open, then opens it again with your tabs.</li>
+            <li><span class="kind fix">Fix</span><b>Auto Picture-in-Picture stays put while Zen is on screen.</b> It pops out when you switch desktops, switch to an app in full screen, switch tabs or minimize.</li>
+            <li><span class="kind fix">Fix</span><b>Zen no longer jumps back in front</b> a moment after you switch to another app while a video plays.</li>
+            <li><span class="kind fix">Fix</span><b>Mouse wheels no longer move the PiP window.</b> A trackpad swipe still does.</li>
+            <li><span class="kind fix">Fix</span><b>No stray button in full-screen video.</b></li>
+            </ul>
+          </div>
+        </article>
         <article class="rel" id="v1.2.2">
           <div class="rel-when">
             <a class="rel-ver" href="https://github.com/shree-venkatesh/Almost-Arc/releases/tag/v1.2.2">1.2.2</a>
             <time class="rel-date" datetime="2026-11-12">Nov 12, 2026</time>
-            <span class="rel-latest">Latest</span>
           </div>
           <div class="rel-body">
             <h3>Undo Clear, and a clean uninstall</h3>

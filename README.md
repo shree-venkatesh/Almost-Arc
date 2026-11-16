@@ -40,7 +40,7 @@ If you don't have Zen, the installer downloads the official Zen from [Zen's own 
 <details>
 <summary><b>Homebrew</b></summary>
 
-Quit Zen, then:
+If Zen is open, `almost-arc install` asks to quit it and opens it again afterwards.
 
 ```bash
 brew install shree-venkatesh/tap/almost-arc
@@ -52,7 +52,7 @@ almost-arc install
 <details>
 <summary><b>One Terminal command (no Homebrew)</b></summary>
 
-Quit Zen, then:
+If Zen is open, it asks to quit it and opens it again afterwards.
 
 ```bash
 curl -fsSL https://almostarc.net/install.sh | bash
@@ -78,7 +78,7 @@ Sine keeps the mod updated; the rest of this page's update steps don't apply.
 <details>
 <summary><b>From the repo (also Linux)</b></summary>
 
-Quit Zen, then:
+On macOS it asks to quit Zen if it's open. On Linux, quit Zen first.
 
 ```bash
 git clone https://github.com/shree-venkatesh/Almost-Arc.git
@@ -108,7 +108,7 @@ After a Homebrew, Terminal or repo install, open `about:support`, click **Clear 
 
 | | Installer, Homebrew or Terminal command | From the repo |
 | --- | --- | --- |
-| **Update Almost Arc** | Click **Update** on the bar Zen shows, or quit Zen and run `almost-arc update` | `git pull && ./install.sh` |
+| **Update Almost Arc** | Click **Update** on the bar Zen shows, or run `almost-arc update` in Terminal | `git pull && ./install.sh` |
 | **After a Zen update** | `almost-arc install`, or open the installer again | `./install.sh` |
 | **Try the newest beta** | `almost-arc update --beta` (a plain `almost-arc update` goes back) | `git pull` gets betas already |
 | **Remove** | `almost-arc uninstall` (Homebrew: then `brew uninstall almost-arc`) | `./uninstall.sh` |
