@@ -26,10 +26,17 @@ describe("pops out when you leave Zen for another app", () => {
     assert.ok(popped(env), why(env));
   });
 
-  test("macOS reports the new front app late: second look 40 ms later", async () => {
+  test("macOS reports the new front app late: looks again 40 ms later", async () => {
     const env = await loadAutoPip({ front: ["zen", "slack"] });
     await env.deactivate();
     assert.ok(popped(env), why(env));
+  });
+
+  test("Zen hears of the switch late: up to 4 more looks", async () => {
+    const env = await loadAutoPip({ front: ["zen", "zen", "zen", "zen", "slack"] });
+    await env.deactivate();
+    assert.ok(popped(env), why(env));
+    assert.equal(env.calls.front, 5);
   });
 
   test("asks for PiP only once per switch", async () => {
@@ -56,17 +63,18 @@ describe("does not pop out for system UI (hard constraint 3)", () => {
 });
 
 describe("does not pop out when focus stays in Zen", () => {
-  test("Zen is still the front app after the second look", async () => {
+  test("Zen is still the front app after every look", async () => {
     const env = await loadAutoPip({ front: "zen" });
     await env.deactivate();
     assert.ok(!popped(env), why(env));
+    assert.equal(env.calls.front, 5, "1 look + 4 more");
   });
 
   test("focus moved to another Zen window", async () => {
     const env = await loadAutoPip({ activeWindow: "zenWindow" });
     await env.deactivate();
     assert.ok(!popped(env), why(env));
-    assert.equal(env.calls.lsappinfo.filter(c => c !== "find pid=4242").length, 0, "no lsappinfo lookup needed");
+    assert.equal(env.calls.front, 0, "no front-app lookup needed");
   });
 
   test("focus moved to the PiP player", async () => {
@@ -185,8 +193,8 @@ describe("settings and platform", () => {
     assert.ok(!env.prefs.has("arc-toolbar.pip-on-blur"));
   });
 
-  test("lsappinfo failing never pops out and never throws", async () => {
-    const env = await loadAutoPip({ lsappinfoFails: true });
+  test("the front-app lookup failing never pops out and never throws", async () => {
+    const env = await loadAutoPip({ frontFails: true });
     await env.deactivate();
     assert.ok(!popped(env), why(env));
   });
@@ -282,16 +290,17 @@ describe("multiple monitors / Zen still visible", () => {
     assert.ok(!popped(env), why(env));
   });
 
-  // Owner's 1.2.9 log: ~0.7 s after every switch away, right after the osascript
-  // window check, macOS made Zen active again (Zen jumped in front of the app you
-  // picked, then dropped behind it). The window list now comes from CoreGraphics
-  // inside Zen, with no extra process.
-  test("the window check starts no osascript (it made macOS bring Zen back in front)", async () => {
+  // Owner's logs (1.2.9, and the 2026-11-15 branch test): ~0.6 s after a switch
+  // away, macOS sometimes made Zen active again (Zen jumped in front of the app you
+  // picked, then dropped behind it); with almost-arc.pip-on-blur off, so no
+  // osascript / lsappinfo ran, it never did. Both lookups now run inside Zen.
+  test("an app switch starts no process (osascript / lsappinfo made macOS bring Zen back in front)", async () => {
     const env = await loadAutoPip({ front: "safari", windows: [{ app: "safari", x: 1600, y: 40, w: 800, h: 600 }, ZEN] });
     await env.deactivate();
     assert.ok(!popped(env), why(env));
     assert.equal(env.calls.windows, 2, "looked twice");
-    assert.deepEqual([...new Set(env.calls.subprocess)], ["/usr/bin/lsappinfo"], "only lsappinfo runs");
+    assert.deepEqual(env.calls.subprocess, [], "no process started");
+    assert.ok(env.calls.front >= 1, "front app looked up in Zen");
     assert.equal(env.calls.cgOptions, 1 | 16, "on-screen windows, no desktop elements");
     assert.equal(env.calls.released, 2, "each window list is released");
   });

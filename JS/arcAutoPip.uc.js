@@ -54,7 +54,6 @@
     IOUtils.writeUTF8(LOG, `${new Date().toISOString().slice(11, 23)}  [autoPip] ${msg}\n`, { mode: "appendOrCreate" }).catch(() => {});
   };
 
-  const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
   let PiP = null;
   try {
     ({ PictureInPicture: PiP } = ChromeUtils.importESModule(
@@ -63,7 +62,8 @@
 
   const PIP_URL = "chrome://global/content/pictureinpicture/player.xhtml";
   const MY_PID = Services.appinfo.processID;
-  const RETRY_MS = 40;            // second look if macOS hadn't switched the front app yet
+  const RETRY_MS = 40;            // look again if macOS hadn't switched the front app yet,
+  const RETRIES = 4;              //   up to 4 more times (Zen hears of the switch through its event loop)
   const SPACE_MS = 600;           // a desktop (Space) switch animates; look again after it
   const COVER_MS = 400;           // how long Zen must stay fully covered / minimized before PiP
   let token = 0;
@@ -76,19 +76,29 @@
     return list;
   };
 
-  // Ask macOS which app is in front (built-in `lsappinfo`, no permissions needed).
-  // Fast path: one `lsappinfo front` call, compared with Zen's own app id (cached).
-  const LSAPPINFO = "/usr/bin/lsappinfo";
-  async function run(args) {
-    const proc = await Subprocess.call({ command: LSAPPINFO, arguments: args });
-    let out = "", chunk;
-    while ((chunk = await proc.stdout.readString())) out += chunk;
-    await proc.wait();
-    return out.trim();
+  // Ask macOS which app is in front: NSWorkspace's frontmostApplication, called in
+  // Zen itself through the Objective-C runtime (js-ctypes). No extra process runs on
+  // an app switch: until 1.2.9 every switch ran `lsappinfo` (and `osascript`), and
+  // ~0.6 s later macOS sometimes made Zen active again, so Zen jumped in front of the
+  // app you'd picked, then dropped behind it (owner's logs, 2026-11-15; with
+  // almost-arc.pip-on-blur off, so nothing ran, it never happened).
+  let objc = null;
+  function openObjC() {
+    if (objc) return objc;
+    const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
+    ctypes.open("/System/Library/Frameworks/AppKit.framework/AppKit");   // NSWorkspace (already loaded in Zen)
+    const lib = ctypes.open("/usr/lib/libobjc.A.dylib");
+    const P = ctypes.voidptr_t, ABI = ctypes.default_abi;
+    // objc_msgSend must be declared with each method's exact signature (arm64)
+    const send = ret => lib.declare("objc_msgSend", ABI, ret, P, P);
+    objc = {
+      cls: lib.declare("objc_getClass", ABI, P, ctypes.char.ptr),
+      sel: lib.declare("sel_registerName", ABI, P, ctypes.char.ptr),
+      id: send(P), pid: send(ctypes.int32_t), long: send(ctypes.long), str: send(ctypes.char.ptr),
+    };
+    return objc;
   }
-  let myASN = null;
-  run(["find", `pid=${MY_PID}`]).then(a => { myASN = a.match(/ASN:[^\s]+/)?.[0] || null; log(`my ASN: ${myASN}`); })
-    .catch(e => log(`lsappinfo find failed: ${e}`));
+  const POLICY = ["Foreground", "UIElement", "BackgroundOnly"];   // NSApplicationActivationPolicy 0/1/2
 
   // macOS system UI that can briefly take the front without being a "real" app switch
   const IGNORE_BUNDLES = new Set([
@@ -113,15 +123,18 @@
   //   zen  - Zen is still the front app
   //   real - the front app is a normal app (not a background helper / system UI)
   async function frontInfo() {
-    const front = (await run(["front"])).match(/ASN:[^\s]+/)?.[0];
-    if (myASN && front && front === myASN) return { zen: true, real: false, pid: MY_PID, front };
-    const info = await run(["info", "-only", "pid", "-only", "ApplicationType", "-only", "bundleid", front || "front"]);
-    const pid = Number(info.match(/"pid"\s*=\s*(\d+)/)?.[1] ?? NaN);
-    const type = info.match(/"ApplicationType"\s*=\s*"([^"]+)"/)?.[1] ?? "";
-    const bundle = info.match(/"CFBundleIdentifier"\s*=\s*"([^"]+)"/)?.[1] ?? "";
+    const o = openObjC();
+    const ws = o.id(o.cls("NSWorkspace"), o.sel("sharedWorkspace"));
+    const app = !ws || ws.isNull() ? null : o.id(ws, o.sel("frontmostApplication"));
+    if (!app || app.isNull()) throw new Error("no front app");
+    const pid = Number(o.pid(app, o.sel("processIdentifier")));
+    const type = POLICY[Number(String(o.long(app, o.sel("activationPolicy"))))] ?? "?";   // a 64-bit ctypes value
+    const ns = o.id(app, o.sel("bundleIdentifier"));
+    const s = !ns || ns.isNull() ? null : o.str(ns, o.sel("UTF8String"));
+    const bundle = !s || s.isNull() ? "" : s.readString();
     const zen = pid === MY_PID;
     const real = !zen && type === "Foreground" && !IGNORE_BUNDLES.has(bundle);
-    return { zen, real, pid, front: `${bundle || front} (${type || "?"})` };
+    return { zen, real, pid, front: `${bundle || `pid ${pid}`} (${type})` };
   }
 
   // On-screen windows, front to back, from CoreGraphics, called in Zen itself via
@@ -245,13 +258,13 @@
     let r;
     try {
       r = await frontInfo();
-      // macOS may not have updated the front app yet — check once more shortly
-      if (r.zen) {
+      // macOS may not have updated the front app yet — look again shortly
+      for (let i = 0; r.zen && i < RETRIES; i++) {
         await new Promise(res => setTimeout(res, RETRY_MS));
         if (my !== token) return;
         r = await frontInfo();
       }
-    } catch (e) { log(`lsappinfo failed: ${e}`); return; }
+    } catch (e) { log(`front-app check failed: ${e}`); return; }
     if (my !== token) return;
     log(`front app: ${r.front}`);
 

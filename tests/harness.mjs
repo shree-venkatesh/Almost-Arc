@@ -14,23 +14,23 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const PIP_URL = "chrome://global/content/pictureinpicture/player.xhtml";
 export const ZEN_PID = 4242;
-export const ZEN_ASN = "ASN:0x0-0x1001:";
 
-// Apps macOS knows about, keyed by ASN (what `lsappinfo front` prints).
+// Apps macOS knows about. type: what NSRunningApplication.activationPolicy says
+// (Foreground = regular, UIElement = accessory, BackgroundOnly = prohibited).
 export const APPS = {
-  zen:           { asn: ZEN_ASN,          pid: ZEN_PID, type: "Foreground", bundle: "app.zen-browser.zen" },
-  safari:        { asn: "ASN:0x0-0x2002:", pid: 501,  type: "Foreground", bundle: "com.apple.Safari" },
-  finder:        { asn: "ASN:0x0-0x2003:", pid: 502,  type: "Foreground", bundle: "com.apple.finder" },
-  slack:         { asn: "ASN:0x0-0x2004:", pid: 503,  type: "Foreground", bundle: "com.tinyspeck.slackmacgap" },
-  controlCenter: { asn: "ASN:0x0-0x3001:", pid: 601,  type: "UIElement",  bundle: "com.apple.controlcenter" },
-  notifications: { asn: "ASN:0x0-0x3002:", pid: 602,  type: "UIElement",  bundle: "com.apple.notificationcenterui" },
-  spotlight:     { asn: "ASN:0x0-0x3003:", pid: 603,  type: "UIElement",  bundle: "com.apple.Spotlight" },
-  screenshot:    { asn: "ASN:0x0-0x3004:", pid: 604,  type: "Foreground", bundle: "com.apple.screencaptureui" },
-  dock:          { asn: "ASN:0x0-0x3005:", pid: 605,  type: "UIElement",  bundle: "com.apple.dock" },
-  stageManager:  { asn: "ASN:0x0-0x3006:", pid: 606,  type: "UIElement",  bundle: "com.apple.WindowManager" },
-  emojiPicker:   { asn: "ASN:0x0-0x3007:", pid: 607,  type: "Foreground", bundle: "com.apple.CharacterPaletteIM" },
-  loginWindow:   { asn: "ASN:0x0-0x3008:", pid: 608,  type: "Foreground", bundle: "com.apple.loginwindow" },
-  helper:        { asn: "ASN:0x0-0x3009:", pid: 609,  type: "BackgroundOnly", bundle: "com.example.helper" },
+  zen:           { pid: ZEN_PID, type: "Foreground", bundle: "app.zen-browser.zen" },
+  safari:        { pid: 501,  type: "Foreground", bundle: "com.apple.Safari" },
+  finder:        { pid: 502,  type: "Foreground", bundle: "com.apple.finder" },
+  slack:         { pid: 503,  type: "Foreground", bundle: "com.tinyspeck.slackmacgap" },
+  controlCenter: { pid: 601,  type: "UIElement",  bundle: "com.apple.controlcenter" },
+  notifications: { pid: 602,  type: "UIElement",  bundle: "com.apple.notificationcenterui" },
+  spotlight:     { pid: 603,  type: "UIElement",  bundle: "com.apple.Spotlight" },
+  screenshot:    { pid: 604,  type: "Foreground", bundle: "com.apple.screencaptureui" },
+  dock:          { pid: 605,  type: "UIElement",  bundle: "com.apple.dock" },
+  stageManager:  { pid: 606,  type: "UIElement",  bundle: "com.apple.WindowManager" },
+  emojiPicker:   { pid: 607,  type: "Foreground", bundle: "com.apple.CharacterPaletteIM" },
+  loginWindow:   { pid: 608,  type: "Foreground", bundle: "com.apple.loginwindow" },
+  helper:        { pid: 609,  type: "BackgroundOnly", bundle: "com.example.helper" },
 };
 
 /**
@@ -38,10 +38,10 @@ export const APPS = {
  * opts:
  *   platform     "macosx" (default) | "linux"
  *   prefs        { "almost-arc.pip-on-blur": true, ... } user values
- *   front        app key or list of app keys: what successive `lsappinfo front` calls see
- *                (the last one repeats). Default "safari".
- *   lsappinfoFails  true: every lsappinfo call throws
- *   allForeground   true: lsappinfo reports every app as "Foreground" (tests the bundle ignore list alone)
+ *   front        app key or list of app keys: what successive front-app lookups
+ *                (NSWorkspace.frontmostApplication) see (the last one repeats). Default "safari".
+ *   frontFails   true: the front-app lookup finds no app
+ *   allForeground   true: every app reports a regular activation policy (tests the bundle ignore list alone)
  *   tab          { soundplaying, muted, pictureinpicture, autoPipped }
  *   win          { windowState, isFullyOccluded, fullscreen, screenX, screenY, outerWidth, outerHeight }
  *   activeWindow "other" (default: another app has focus) | "zenWindow" | "pip"
@@ -60,31 +60,21 @@ export async function loadAutoPip(opts = {}) {
   const fronts = [].concat(o.front);
   // fresh per test: the debug timeline patches its prototype
   const LauncherParent = class { receiveMessage(msg) { return `handled ${msg.name}`; } };
-  const calls = { lsappinfo: [], windows: 0, released: 0, subprocess: [] };
+  const calls = { front: 0, windows: 0, released: 0, subprocess: [] };
   let lastFront = [].concat(o.front)[0];
   const toggles = [];
   const logs = [];
   const prefs = new Map(Object.entries({ "almost-arc.pip-debug": true, ...o.prefs }));
   const defaults = new Map();
 
-  // ---- macOS: lsappinfo through Subprocess, the window list through ctypes ----
-  function lsappinfo(args) {
-    calls.lsappinfo.push(args.join(" "));
-    if (o.lsappinfoFails) throw new Error("lsappinfo: launch failed");
-    if (args[0] === "find") return `${ZEN_ASN}\n`;
-    if (args[0] === "front") {
-      const key = fronts.length > 1 ? fronts.shift() : fronts[0];
-      lastFront = key;
-      return `${APPS[key].asn}\n`;
-    }
-    if (args[0] === "info") {
-      const asn = args[args.length - 1];
-      const app = Object.values(APPS).find(a => a.asn === asn);
-      if (!app) return "";
-      const type = o.allForeground ? "Foreground" : app.type;
-      return `"pid"=${app.pid}\n"ApplicationType"="${type}"\n"CFBundleIdentifier"="${app.bundle}"\n`;
-    }
-    throw new Error(`unexpected lsappinfo ${args.join(" ")}`);
+  // ---- macOS, through a fake js-ctypes: the front app (Objective-C runtime) and
+  // the on-screen window list (CoreGraphics) ----
+  function frontApp() {
+    calls.front++;
+    if (o.frontFails) return null;
+    const key = fronts.length > 1 ? fronts.shift() : fronts[0];
+    lastFront = key;
+    return APPS[key];
   }
   // on-screen windows, as CGWindowListCopyWindowInfo would list them
   function cgWindowList() {
@@ -109,31 +99,49 @@ export async function loadAutoPip(opts = {}) {
     CFDictionaryGetValue: (d, k) => ptr(d.v[k]),
     CFNumberGetValue: (n, type, out) => { out.value = n.v; return true; },
     CFRelease: a => { calls.released++; },
+    objc_getClass: name => ptr(name === "NSWorkspace" ? { cls: name } : null),
+    sel_registerName: name => name,
+  };
+  // objc_msgSend, declared once per return type: each selector must use the right one
+  const SELECTORS = {
+    sharedWorkspace: "void*", frontmostApplication: "void*", bundleIdentifier: "void*",
+    processIdentifier: "int32", activationPolicy: "long", UTF8String: "char*",
+  };
+  const msgSend = ret => (self, sel) => {
+    const want = SELECTORS[sel];
+    if (!want) throw new Error(`unexpected selector ${sel}`);
+    const got = ret === ctypes.int32_t ? "int32" : ret === ctypes.char.ptr ? "char*" : ret;
+    if (got !== want) throw new Error(`${sel} sent with return type ${got}, needs ${want}`);
+    const v = self.v;
+    switch (sel) {
+      case "sharedWorkspace": return ptr(v.cls ? { ws: true } : null);
+      case "frontmostApplication": return ptr(frontApp());
+      case "processIdentifier": return v.pid;
+      case "activationPolicy": return { Foreground: 0, UIElement: 1, BackgroundOnly: 2 }[o.allForeground ? "Foreground" : v.type];
+      case "bundleIdentifier": return ptr(v.bundle ? { str: v.bundle } : null);
+      case "UTF8String": return { isNull: () => false, readString: () => v.str };
+    }
   };
   const ctypes = {
     default_abi: "abi", voidptr_t: "void*", uint32_t: "u32", int32_t: scalar(), long: "long", bool: "bool", void_t: "void",
+    char: { ptr: "char-ptr" },
     double: scalar(),
     cast: x => x,
     StructType: function () { const T = function () { const r = { x: 0, y: 0, w: 0, h: 0, address: () => r }; return r; }; T.ptr = "ptr"; return T; },
     open: path => ({
-      declare(name) {
+      declare(name, abi, ret) {
+        if (name === "objc_msgSend") return msgSend(ret);
         if (name in KEYS) return KEYS[name];
         if (!(name in NATIVE)) throw new Error(`unexpected symbol ${name}`);
         return NATIVE[name];
       },
     }),
   };
+  // Nothing should start a process on an app switch; any attempt is recorded and fails
   const Subprocess = {
-    async call({ command, arguments: args }) {
+    async call({ command }) {
       calls.subprocess.push(command);
-      let out;
-      if (command === "/usr/bin/lsappinfo") out = lsappinfo(args);
-      else throw new Error(`unexpected command ${command}`);
-      let sent = false;
-      return {
-        stdout: { readString: async () => (sent ? "" : ((sent = true), out)) },
-        wait: async () => ({ exitCode: 0 }),
-      };
+      throw new Error(`unexpected command ${command}`);
     },
   };
 
@@ -232,7 +240,7 @@ export async function loadAutoPip(opts = {}) {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(ROOT, "JS/arcAutoPip.uc.js"), "utf8"), context,
                   { filename: "arcAutoPip.uc.js" });
-  await settle();   // the startup `lsappinfo find` for Zen's own ASN
+  await settle();
 
   return {
     toggles, logs, calls, prefs, pipList, browser,
