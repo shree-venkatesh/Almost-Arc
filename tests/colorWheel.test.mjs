@@ -43,20 +43,6 @@ function load(opts = {}) {
   const picker = { panel };
   if (!o.noPicker) picker.getColorFromPosition = function (x, y, type) { zenCalls.push([x, y, type]); return ZEN_WHITE; };
 
-  // a canvas that keeps the pixels the script draws
-  let drawn = null;
-  const canvasFor = () => {
-    const c = {
-      width: 0, height: 0,
-      getContext: () => ({
-        createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-        putImageData: img => { drawn = img; },
-      }),
-      toDataURL: () => "data:image/png;base64,WHEEL",
-    };
-    return c;
-  };
-
   const listeners = {};
   const timers = [];
   const window = {
@@ -67,7 +53,6 @@ function load(opts = {}) {
   };
   const context = {
     window, Services,
-    document: { createElementNS: (_ns, name) => (name === "canvas" ? canvasFor() : null) },
     console: { warn() {} },
     setTimeout: fn => timers.push(fn),
     Math, JSON, Error, Number, Array,
@@ -78,7 +63,6 @@ function load(opts = {}) {
   const fire = (type, ev) => (listeners[type] || []).forEach(fn => fn(ev));
   return {
     picker, wheel, style, zenCalls, ZEN_WHITE,
-    get drawn() { return drawn; },
     openPicker() { fire("popupshowing", { target: panel }); fire("popupshown", { target: panel }); },
     /** You click a preset swatch: Zen applies it while the click runs. */
     clickPreset(apply) {
@@ -103,20 +87,24 @@ describe("Arc's color map", () => {
     assert.ok(brightness(z.colorAt(150, 150)) < 25, String(z.colorAt(150, 150)));
   });
 
-  test("halfway out is the full color (red at 0 degrees)", () => {
+  // Owner, 2026-11-17: stretch the inner (dark to full color) part out
+  test("the full color is about 80% of the way out (red at 0 degrees)", () => {
     const z = load();
     z.openPicker();
-    const [r, g, b] = z.colorAt(150 + 0.55 * 150, 150);
+    const [r, g, b] = z.colorAt(150 + 0.8 * 150, 150);
     assert.ok(r > 220 && g < 50 && b < 50, String([r, g, b]));
+    const half = z.colorAt(150 + 0.5 * 150, 150);
+    assert.ok(half[0] < 170, `still darker halfway: ${half}`);
   });
 
-  test("the edge is a light version of the hue, never white or grey", () => {
+  // Owner, 2026-11-17: less white at the edges
+  test("the edge is a light version of the hue, nowhere near white or grey", () => {
     const z = load();
     z.openPicker();
     const edge = [[300, 150], [150, 300], [0, 150], [150, 0]].map(([x, y]) => z.colorAt(x, y));
     for (const c of edge) {
-      assert.ok(hued(c), `still has a hue: ${c}`);
-      assert.ok(brightness(c) > 180, `light: ${c}`);
+      assert.ok(hued(c) && Math.max(...c) - Math.min(...c) > 100, `strongly hued: ${c}`);
+      assert.ok(brightness(c) > 130 && Math.min(...c) < 180, `light, not white: ${c}`);
     }
     assert.equal(new Set(edge.map(String)).size, 4, "a different color in each direction");
   });
@@ -147,37 +135,12 @@ describe("Arc's color map", () => {
   });
 });
 
-describe("the painted wheel", () => {
-  test("is painted with the same colors a dot gets", () => {
-    const z = load({ size: 100 });
-    z.openPicker();
-    const img = z.drawn;
-    assert.equal(img.width, 100);
-    const px = (x, y) => [...img.data.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 4)];
-    for (const [x, y] of [[50, 50], [80, 50], [97, 50], [50, 20]]) {
-      const [r, g, b, a] = px(x, y);
-      assert.equal(a, 255, `opaque inside the circle at ${x},${y}`);
-      const dot = z.colorAt(x + 0.5, y + 0.5);
-      assert.ok(Math.abs(r - dot[0]) <= 2 && Math.abs(g - dot[1]) <= 2 && Math.abs(b - dot[2]) <= 2,
-        `${x},${y}: painted ${[r, g, b]}, dot ${dot}`);
-    }
-    assert.equal(px(2, 2)[3], 0, "outside the circle stays clear");
-  });
-
-  test("keeps Zen's dot grid on top", () => {
+describe("the wheel itself", () => {
+  // Owner, 2026-11-17: a painted wheel looked bad. Zen draws its own, untouched.
+  test("is left as Zen draws it", () => {
     const z = load();
     z.openPicker();
-    const bg = z.style.get("background-image");
-    assert.match(bg, /^radial-gradient\(.*\), url\("data:image\/png;base64,WHEEL"\)$/);
-    assert.equal(z.style.get("background-size"), "6px 6px, 100% 100%");
-  });
-
-  test("is painted once per size, not on every opening", () => {
-    const z = load({ size: 50 });
-    z.openPicker();
-    const first = z.drawn;
-    z.openPicker();
-    assert.equal(z.drawn, first);
+    assert.equal(z.style.size, 0);
   });
 });
 

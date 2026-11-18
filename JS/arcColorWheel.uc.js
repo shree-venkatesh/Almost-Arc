@@ -4,10 +4,9 @@
 //                 and the distance from the center goes from near-black, through the
 //                 full color, to a light (pastel) version of the same hue at the edge.
 //                 Zen's own turns every hue white at the edge (or grey, for a dot from
-//                 a preset), and doesn't paint the wheel, so you pick blind. This paints
-//                 the wheel with the same map, so the color under a dot is the color you
-//                 get. Preset swatches still give their exact color. Saved themes keep
-//                 their colors (Zen saves the color, not the dot's position).
+//                 a preset). Preset swatches still give their exact color. Saved themes
+//                 keep their colors (Zen saves the color, not the dot's position). The
+//                 wheel itself is left as Zen draws it (a painted one looked bad).
 //                 Pref: almost-arc.arc-color-wheel (default true)
 // ==/UserScript==
 
@@ -25,19 +24,20 @@
 
   const PANEL_ID = "PanelUI-zen-gradient-generator";
   const PRESETS_ID = "PanelUI-zen-gradient-generator-color-pages";
-  const HTML_NS = "http://www.w3.org/1999/xhtml";
 
   // Arc's map. t = distance from the center, 0 (center) to 1 (edge of the circle the
-  // dots can move in). Lightness runs from near-black to a pastel; the full color is
-  // just past halfway. Saturation stays high, so the edge keeps its hue.
-  const L_CENTER = 6, L_EDGE = 86, SATURATION = 0.9;
+  // dots can move in). Lightness runs from near-black to a light version of the hue;
+  // the curve keeps the dark-to-full-color part wide (full color about 80% of the way
+  // out) and the edge only mildly light, never near white (owner, 2026-11-17).
+  // Saturation stays high, so the edge keeps its hue.
+  const L_CENTER = 6, L_EDGE = 72, CURVE = 1.6, SATURATION = 0.9;
   function hslToRgb(h, s, l) {   // h in degrees, s and l in 0..1
     const k = n => (n + h / 30) % 12;
     const a = s * Math.min(l, 1 - l);
     const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
     return [f(0), f(8), f(4)].map(v => Math.round(Math.min(255, Math.max(0, v * 255))));
   }
-  const arcColor = (hue, t) => hslToRgb(hue, SATURATION, (L_CENTER + (L_EDGE - L_CENTER) * t) / 100);
+  const arcColor = (hue, t) => hslToRgb(hue, SATURATION, (L_CENTER + (L_EDGE - L_CENTER) * t ** CURVE) / 100);
 
   // A dot's position (its left/top in the wheel, as Zen stores it) -> hue and distance,
   // with Zen's own geometry: the circle the dots can move in is centered in the wheel,
@@ -85,48 +85,8 @@
     };
   }
 
-  // Paint the wheel with the same map (behind Zen's dot grid), once per size
-  function paint(picker) {
-    const el = wheelOf(picker);
-    if (!el) return;
-    const { w, h } = sizeOf(el);
-    if (!w || !h) return;
-    const scale = window.devicePixelRatio || 1;
-    const key = `${w}x${h}@${scale}`;
-    if (el.__arcWheelKey === key) return;
-    const canvas = document.createElementNS(HTML_NS, "canvas");
-    canvas.width = Math.round(w * scale);
-    canvas.height = Math.round(h * scale);
-    const ctx = canvas.getContext("2d");
-    const img = ctx.createImageData(canvas.width, canvas.height);
-    const R = w / 2;
-    for (let py = 0; py < canvas.height; py++) {
-      for (let px = 0; px < canvas.width; px++) {
-        const x = (px + 0.5) / scale, y = (py + 0.5) / scale;
-        const d = Math.hypot(x - w / 2, y - h / 2);
-        const alpha = Math.max(0, Math.min(1, R + 0.5 - d));   // smooth circle edge
-        if (!alpha) continue;
-        const { hue, t } = polar(x, y, w, h);
-        const [r, g, b] = arcColor(hue, t);
-        const i = (py * canvas.width + px) * 4;
-        img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = Math.round(alpha * 255);
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-    const grid = "radial-gradient(light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.05)) 1px, transparent 0)";
-    el.style.setProperty("background-image", `${grid}, url("${canvas.toDataURL()}")`);
-    el.style.setProperty("background-size", "6px 6px, 100% 100%");
-    el.style.setProperty("background-position", "-23px -23px, 0 0");
-    el.style.setProperty("background-repeat", "repeat, no-repeat");
-    el.__arcWheelKey = key;
-  }
-
   window.addEventListener("popupshowing", e => {
     if (e.target?.id !== PANEL_ID) return;
     try { install(window.gZenThemePicker); } catch (err) { console.warn("[arcColorWheel]", err); }
-  }, true);
-  window.addEventListener("popupshown", e => {
-    if (e.target?.id !== PANEL_ID) return;
-    try { paint(window.gZenThemePicker); } catch (err) { console.warn("[arcColorWheel]", err); }
   }, true);
 })();
