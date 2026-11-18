@@ -17,7 +17,8 @@ Built and tested on **Zen 1.24.1b (Firefox 159), macOS 13 or later**. Linux most
 - **Arc's sidebar.** Frosted essentials tiles, and a compact mode where the sidebar pops out full height with the window buttons at its top.
 - **Auto Picture-in-Picture.** A playing video pops out when you switch tabs, minimize, switch to another desktop or to an app in full screen, and goes back when you return. Switching to an app while Zen stays on the same desktop (on another monitor, side by side, or a window over it, even a maximized one) doesn't trigger it, nor does system UI (Spotlight, Control Center, screenshots). Desktop and app switching is macOS only.
 - **Arc's PiP controls.** Back to Tab, Minimize (keeps the video playing), 15-second skips and a slim progress bar. Fling the window into a corner with a two-finger swipe on the trackpad, or by letting go of it mid-drag. Let go slowly and it stays where you put it; drop it partly off the screen and it slides back to the edge.
-- **Cmd+Z for tabs.** Reopens tabs you closed, including everything Zen's Clear closed, and puts moved and pinned or unpinned tabs back, within six [safeguards](#tab-undo-safeguards).
+- **Cmd+Z for tabs and themes.** Reopens tabs you closed, including everything Zen's Clear closed, puts moved and pinned or unpinned tabs back, and undoes changes to a space's theme, within six [safeguards](#tab-undo-safeguards).
+- **Arc's color wheel.** Zen's space theme picker works like Arc's: the direction picks the color, and going out from the center goes from dark, through the full color, to a light version of it. The wheel is painted, so you see the color before you pick it.
 - **Updates from inside Zen.** When a new version is out, Zen shows a bar with an **Update** button, then **Restart Zen**. If a Zen update switched the mod's scripts off, a notice gives you the command that fixes it.
 
 ## Install
@@ -124,7 +125,8 @@ Removing puts everything back, including Zen's own icon.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes |
+| `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes and space theme changes |
+| `almost-arc.arc-color-wheel` | on | Arc's color wheel in Zen's space theme picker (restart Zen) |
 | `almost-arc.pip-on-blur` | on | Auto PiP when you switch to another app or desktop (macOS) |
 | `almost-arc.pip-when-covered` | on | Auto PiP when Zen is minimized, or when macOS reports it completely hidden for a moment (macOS; not a reliable trigger for a window maximized over Zen; replaces Firefox's own, which flashed a PiP open and shut) |
 | `almost-arc.pip-layout` | on | Arc's PiP controls (Back to Tab, Minimize, Close, 15 s skips) |

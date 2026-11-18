@@ -63,6 +63,11 @@
           "chrome://global/content/pictureinpicture/player.xhtml"
         ]
       },
+      "arcColorWheel.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
       "arcNotices.uc.js": {
         "include": [
           "chrome://browser/content/browser.xhtml"

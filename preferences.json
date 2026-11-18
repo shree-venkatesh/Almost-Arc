@@ -100,5 +100,11 @@
     "label": "Two-finger swipe over a PiP window sends it to a screen corner, like Arc (applies to new PiP windows)",
     "type": "checkbox",
     "defaultValue": true
+  },
+  {
+    "property": "almost-arc.arc-color-wheel",
+    "label": "Arc-style color wheel in Zen's space theme picker (restart Zen)",
+    "type": "checkbox",
+    "defaultValue": true
   }
 ]

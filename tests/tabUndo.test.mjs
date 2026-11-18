@@ -112,6 +112,21 @@ async function load(opts = {}) {
     windowUtils: { get IMEStatus() { return focus.ime ? 1 : 0; } },
     isBlankPageURL: u => u === "about:blank" || u === "about:newtab",
   };
+  // ---- Zen spaces and their themes, and the theme picker ----
+  const spaces = new Map([["space-1", { uuid: "space-1", theme: { gradientColors: [], opacity: 0.5 } }]]);
+  window.gZenWorkspaces = {
+    getWorkspaceFromId: id => spaces.get(id),
+    saveWorkspace: ws => calls.push(`save theme ${ws.uuid}`),
+  };
+  const picker = { editing: "space-1" };
+  window.gZenThemePicker = {
+    get workspaceBeingEdited() { return spaces.get(picker.editing); },
+    onWorkspaceChange: ws => calls.push(`repaint ${ws.uuid}`),
+  };
+  const PANEL = { id: "PanelUI-zen-gradient-generator" };
+  const inPanel = { closest: sel => (sel === "#PanelUI-zen-gradient-generator" ? PANEL : null) };
+  const outside = { closest: () => null };
+
   const files = new Map();         // path -> true
   const IOUtils = {
     writeUTF8: async () => {},
@@ -193,6 +208,18 @@ async function load(opts = {}) {
       await tick(100);
     },
     addToGroup(tab, id) { tab.group = groupOf(id); groupOf(id).tabs.push(tab); },
+    spaces, picker,
+    openPicker() { fire(winListeners, "popupshowing", { target: PANEL }); },
+    closePicker() { input(); fire(winListeners, "popuphiding", { target: PANEL }); },
+    /** You change the space's theme in the picker (Zen updates it as you drag), then let go. */
+    async userSetsTheme(theme, { letGo = true } = {}) {
+      input();
+      spaces.get(picker.editing).theme = theme;
+      if (letGo) fire(winListeners, "mouseup", { isTrusted: true, type: "mouseup", target: inPanel });
+      await tick(200);
+    },
+    /** A click somewhere else in Zen (not the picker). */
+    clickOutside() { fire(winListeners, "mouseup", { isTrusted: true, type: "mouseup", target: outside }); },
     /** Press Cmd+Z; resolves when the undo is done. Returns whether Cmd+Z was taken. */
     async cmdZ() {
       let taken = false;
@@ -347,5 +374,99 @@ describe("tab undo: typing", () => {
     z.focus.ime = false;
     assert.ok(await z.cmdZ());
     assert.equal(z.open.length, 5);
+  });
+});
+
+describe("theme undo: Zen's space color picker", () => {
+  const RED = { gradientColors: [{ c: [200, 30, 30] }], opacity: 0.5 };
+  const BLUE = { gradientColors: [{ c: [30, 30, 200] }], opacity: 0.5 };
+  const ORIGINAL = { gradientColors: [], opacity: 0.5 };
+
+  test("Cmd+Z puts the theme back after you drag a dot, saves it and redraws", async () => {
+    const z = await load({ tabs: 3 });
+    z.openPicker();
+    await z.userSetsTheme(RED);
+    assert.ok(await z.cmdZ());
+    assert.deepEqual(z.spaces.get("space-1").theme, ORIGINAL);
+    assert.ok(z.calls.includes("save theme space-1"));
+    assert.ok(z.calls.includes("repaint space-1"));
+    assert.equal([...z.files.keys()].length, 1, "session backed up first");
+  });
+
+  test("each change you finish is its own step", async () => {
+    const z = await load({ tabs: 3 });
+    z.openPicker();
+    await z.userSetsTheme(RED);
+    await z.userSetsTheme(BLUE);
+    await z.cmdZ();
+    assert.deepEqual(z.spaces.get("space-1").theme, RED);
+    await z.cmdZ();
+    assert.deepEqual(z.spaces.get("space-1").theme, ORIGINAL);
+  });
+
+  test("the many updates while you drag are one step, recorded when you let go", async () => {
+    const z = await load({ tabs: 3 });
+    z.openPicker();
+    await z.userSetsTheme(RED, { letGo: false });     // still dragging
+    await z.userSetsTheme(BLUE);                      // let go here
+    await z.cmdZ();
+    assert.deepEqual(z.spaces.get("space-1").theme, ORIGINAL);
+  });
+
+  test("a change still pending when the picker closes is recorded", async () => {
+    const z = await load({ tabs: 3 });
+    z.openPicker();
+    await z.userSetsTheme(RED, { letGo: false });
+    z.closePicker();
+    await z.cmdZ();
+    assert.deepEqual(z.spaces.get("space-1").theme, ORIGINAL);
+  });
+
+  test("clicks outside the picker record nothing", async () => {
+    const z = await load({ tabs: 3 });
+    z.openPicker();
+    z.spaces.get("space-1").theme = RED;
+    z.clickOutside();
+    await z.tick(200);
+    assert.equal(await z.cmdZ(), false);
+  });
+
+  test("tabs and themes share one history: the newest change is undone first", async () => {
+    const z = await load({ tabs: 3 });
+    await z.userCloses(z.open[0]);
+    z.openPicker();
+    await z.userSetsTheme(RED);
+    await z.cmdZ();
+    assert.deepEqual(z.spaces.get("space-1").theme, ORIGINAL);
+    assert.equal(z.open.length, 2, "the tab is still closed");
+    await z.cmdZ();
+    assert.equal(z.open.length, 3);
+  });
+
+  test("the picker editing another space: that space's theme is put back", async () => {
+    const z = await load({ tabs: 3 });
+    z.spaces.set("space-2", { uuid: "space-2", theme: BLUE });
+    z.picker.editing = "space-2";
+    z.openPicker();
+    await z.userSetsTheme(RED);
+    await z.cmdZ();
+    assert.deepEqual(z.spaces.get("space-2").theme, BLUE);
+    assert.deepEqual(z.spaces.get("space-1").theme, ORIGINAL);
+  });
+
+  test("a space deleted since is left alone", async () => {
+    const z = await load({ tabs: 3 });
+    z.openPicker();
+    await z.userSetsTheme(RED);
+    z.spaces.delete("space-1");
+    await z.cmdZ();
+    assert.ok(!z.calls.some(c => c.startsWith("save theme")));
+  });
+
+  test("nothing is recorded before Zen has restored the session", async () => {
+    const z = await load({ tabs: 3, noArm: true });
+    z.openPicker();
+    await z.userSetsTheme(RED);
+    assert.equal(await z.cmdZ(), false);
   });
 });

@@ -1,7 +1,9 @@
 // ==UserScript==
-// @name           Arc-style Cmd+Z for tabs (safe version)
+// @name           Arc-style Cmd+Z for tabs and space themes (safe version)
 // @description    Cmd+Z (Ctrl+Z elsewhere) undoes YOUR last tab change from this session:
-//                 closing tabs, moving tabs (incl. pinned tabs / folders), pin/unpin.
+//                 closing tabs, moving tabs (incl. pinned tabs / folders), pin/unpin,
+//                 and changes to a space's theme in Zen's color picker (one step per
+//                 dot you drop, click, preset, slider or texture change).
 //                 Safeguards:
 //                   1. only changes made right after your own click/drag/keypress count
 //                      (Zen's own restores/syncs are never recorded)
@@ -136,6 +138,44 @@
   tc.addEventListener("TabPinned", e => { if (canRecord()) record({ type: "pin", tab: e.target }); });
   tc.addEventListener("TabUnpinned", e => { if (canRecord()) record({ type: "unpin", tab: e.target }); });
 
+  // Space themes (Zen's color picker). Zen updates the space's theme on every mouse
+  // move while you drag a dot, so a step is recorded when a change ends: shortly after
+  // you let go of the mouse, click, or change a control in the picker, and when the
+  // picker closes. Each step keeps the theme from before it.
+  const THEME_PANEL = "PanelUI-zen-gradient-generator";
+  const THEME_SETTLE_MS = 150;
+  const copy = v => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
+  const sameTheme = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  let themeSeen = null;            // { uuid, theme } as of the last recorded change
+  let themeTimer = null;
+  function editedSpace() {
+    try { return window.gZenThemePicker?.workspaceBeingEdited || null; } catch (e) { return null; }
+  }
+  function themeChanged() {
+    clearTimeout(themeTimer);
+    const ws = editedSpace();
+    if (!ws || !themeSeen || ws.uuid !== themeSeen.uuid || sameTheme(ws.theme, themeSeen.theme)) return;
+    if (canRecord()) {
+      record({ type: "theme", uuid: ws.uuid, before: themeSeen.theme });
+      log(`theme change recorded for space ${ws.uuid}`);
+    } else log(`theme change NOT recorded (armed=${armed} userCaused=${userCaused()} undoing=${undoing})`);
+    themeSeen = { uuid: ws.uuid, theme: copy(ws.theme) };
+  }
+  const inThemePanel = e => e.target?.closest?.(`#${THEME_PANEL}`);
+  window.addEventListener("popupshowing", e => {
+    if (e.target?.id !== THEME_PANEL) return;
+    const ws = editedSpace();
+    themeSeen = ws ? { uuid: ws.uuid, theme: copy(ws.theme) } : null;
+  }, true);
+  window.addEventListener("popuphiding", e => { if (e.target?.id === THEME_PANEL) themeChanged(); }, true);
+  for (const type of ["mouseup", "click", "change", "keyup"]) {
+    window.addEventListener(type, e => {
+      if (!e.isTrusted || !inThemePanel(e)) return;
+      clearTimeout(themeTimer);
+      themeTimer = setTimeout(themeChanged, THEME_SETTLE_MS);
+    }, true);
+  }
+
   // ---- safeguard 4: back up the session file before undoing --------------
   async function backupSession() {
     try {
@@ -208,6 +248,16 @@
         if (!alive(a.tab) || a.tab.pinned) return false;
         gBrowser.pinTab(a.tab);
         return true;
+      case "theme": {
+        const ws = window.gZenWorkspaces?.getWorkspaceFromId?.(a.uuid);
+        if (!ws) { log(`theme undo: space ${a.uuid} is gone`); return false; }
+        ws.theme = copy(a.before);
+        window.gZenWorkspaces.saveWorkspace?.(ws);
+        window.gZenThemePicker?.onWorkspaceChange?.(ws);   // repaint, and redraw the picker's dots
+        if (themeSeen?.uuid === a.uuid) themeSeen.theme = copy(a.before);
+        log(`theme undone for space ${a.uuid}`);
+        return true;
+      }
     }
     return false;
   }
