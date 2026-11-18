@@ -69,19 +69,14 @@
     if (tx !== window.screenX || ty !== window.screenY) slideTo(tx, ty);
   }
 
-  // Run fn once `ms` have passed, counted in animation frames.
-  function afterMs(ms, fn) {
-    const t0 = performance.now();
-    const tick = now => { if (now - t0 >= ms) fn(); else requestAnimationFrame(tick); };
-    requestAnimationFrame(tick);
-  }
-
   // Keep the PiP's size around letting go of a drag. When a window is let go of
   // with the cursor at a screen edge, macOS (window tiling) can shrink it to a
   // sliver at that edge while it slides back (owner's log, 1.2.7). If the size
   // changes then, put it back and place the window on screen in one jump.
   const KEEP_MS = 3000;                 // how long after letting go to guard the size
   const STILL_MS = 200;                 // restore once the size has stopped changing this long
+  const SLIVER = 100;                   // px: macOS's squash leaves a side this small (33 x 58);
+                                        // a size you set yourself is left alone
   let keep = null;                      // { w, h, until, fixes, timer }
   // macOS animates the shrink over ~300 ms; resizing during it is undone by the next
   // animation frame (1.2.8 log: 3 tries used up in 50 ms). So wait for it to stop,
@@ -97,6 +92,13 @@
       if (now - changed < STILL_MS) { k.timer = requestAnimationFrame(tick); return; }
       k.timer = 0;
       if (window.outerWidth === k.w && window.outerHeight === k.h) return;
+      // resized by you (or anything that isn't macOS's squash): keep it, stop guarding
+      if (Math.min(window.outerWidth, window.outerHeight) >= SLIVER) {
+        log(`size: now ${window.outerWidth}x${window.outerHeight}, kept (not a squash)`);
+        keep = null;
+        settle();   // finish putting it on screen if the resize stopped a slide back
+        return;
+      }
       if (k.fixes++ >= 3) { log("size: gave up restoring"); keep = null; return; }
       log(`size: changed to ${window.outerWidth}x${window.outerHeight} after letting go, restoring ${k.w}x${k.h}`);
       window.resizeTo(k.w, k.h);
@@ -226,8 +228,7 @@
       const dirY = Math.abs(vy) >= AXIS * speed ? Math.sign(vy) : 0;
       glide(dirX, dirY);
     } else {
-      // a moment later: not in the same instant macOS handles a release at the edge
-      afterMs(150, () => { if (!drag) settle(); });
+      settle();   // right away (it waited 150 ms while macOS still dragged the window itself)
     }
   }
 

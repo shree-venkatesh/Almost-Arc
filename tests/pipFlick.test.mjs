@@ -357,14 +357,42 @@ describe("mouse: the PiP keeps its size after you let go", () => {
     assert.deepEqual(env.pos(), [RIGHT, 300]);
   });
 
-  test("the slide back waits a moment after letting go (not the same instant as macOS)", () => {
+  // Owner, 2026-11-17: it started about half a second after letting go. It no longer
+  // waits 150 ms (that was for when macOS dragged the window itself).
+  test("the slide back starts as soon as you let go", () => {
     const env = load();
     offRight(env);
     const n = env.moves.length;
-    for (let i = 0; i < 5; i++) env.frame();       // 80 ms
-    assert.equal(env.moves.length, n, "nothing moved yet");
+    env.frame();                                    // the first frame after letting go
+    assert.ok(env.moves.length > n, "already moving");
     env.settle();
     assert.deepEqual(env.pos(), [RIGHT, 300]);
+  });
+
+  // Owner, 2026-11-17: after it snapped back, resizing the window didn't work: for
+  // 3 s the guard undid every size change, yours too. Now only macOS's sliver.
+  test("resizing it yourself right after it snapped back is kept", () => {
+    const env = load();
+    offRight(env);
+    env.settle();                                   // back on screen
+    env.shrink(500, 281);                           // you drag a corner to make it bigger
+    env.settle();
+    assert.equal(env.resizes.length, 0, JSON.stringify(env.resizes));
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [500, 281]);
+    env.shrink(200, 113);                           // and then smaller
+    env.settle();
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [200, 113]);
+  });
+
+  test("resizing it while it slides back: kept, and it still ends up on screen", () => {
+    const env = load();
+    offRight(env);
+    env.frame(); env.frame();                       // sliding
+    env.shrink(500, 281);
+    env.settle();
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [500, 281]);
+    const s = env.window.screen;
+    assert.ok(env.window.screenX + 500 <= s.availLeft + s.availWidth, `on screen: x ${env.window.screenX}`);
   });
 
   test("a flick keeps its size too", () => {
