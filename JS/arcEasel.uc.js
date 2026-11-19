@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           Almost Arc easels
-// @description    Arc-style easels: a tab you draw in. "New Easel" (File menu and the tab
-//                 context menu) opens one; it saves as you draw and comes back with the
+// @description    Arc-style easels: a tab you draw in. "New Easel" (Zen's + button
+//                 at the bottom of the sidebar, File menu, tab context menu) opens one; it saves as you draw and comes back with the
 //                 tab (pin it, put it in a folder, restart Zen: the drawing is still
 //                 there). Pen, eraser, colors, sizes, undo/redo (Cmd+Z / Cmd+Shift+Z),
 //                 two-finger scroll to move around. Drawings are saved in the profile
@@ -447,6 +447,8 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
       "easel.css": CSS,
       "easel.js": js,
       "icon.svg": icon,
+      // for Zen's + menu: drawn in the menu's text color, like Zen's own icons there
+      "menu-icon.svg": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="context-fill" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.75 13.25l.75-3 7.75-7.75a1.4 1.4 0 0 1 2 2L5.5 12.25z"/><path d="M9.75 4l2 2"/></svg>\n`,
       "easel.manifest": `content ${HOST} ./\n`,
     };
   }
@@ -506,21 +508,33 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
     gBrowser.selectedTab = tab;
   }
 
-  function menuItem(id, after, popup) {
+  // ref: the item to put it after (before, with before: true); not there: at the top
+  function menuItem(id, popup, ref, { before = false, image = null } = {}) {
     if (!popup || document.getElementById(id)) return;
     const item = document.createXULElement("menuitem");
     item.id = id;
     item.setAttribute("label", "New Easel");
+    if (image) item.setAttribute("image", image);
     item.addEventListener("command", openEasel);
-    const ref = after && popup.querySelector(`#${after}`);
-    if (ref) ref.after(item); else popup.prepend(item);
+    const at = ref && popup.querySelector(ref);
+    if (at) before ? at.before(item) : at.after(item);
+    else popup.prepend(item);
   }
+  // Zen's + button at the bottom of the sidebar: just above its New Tab
+  const PLUS_POPUP = "zenCreateNewPopup";
+  const addToPlus = () => menuItem("almost-arc-new-easel-plus", document.getElementById(PLUS_POPUP),
+    'menuitem[command="cmd_newNavigatorTab"]', { before: true, image: `${PREFIX}menu-icon.svg` });
 
   ready = setup().catch(e => { console.warn("[arcEasel]", e); throw e; });
   ready.catch(() => {});
   try {
-    menuItem("almost-arc-new-easel", "menu_newNavigatorTab", document.getElementById("menu_FilePopup"));
-    menuItem("almost-arc-new-easel-tab", "context_openANewTab", document.getElementById("tabContextMenu"));
+    menuItem("almost-arc-new-easel", document.getElementById("menu_FilePopup"), "#menu_newNavigatorTab");
+    menuItem("almost-arc-new-easel-tab", document.getElementById("tabContextMenu"), "#context_openANewTab");
+    addToPlus();
   } catch (e) { console.warn("[arcEasel]", e); }
+  // in case Zen builds the + menu later
+  window.addEventListener("popupshowing", e => {
+    if (e.target?.id === PLUS_POPUP) try { addToPlus(); } catch (err) { console.warn("[arcEasel]", err); }
+  }, true);
   window.__arcEaselOpen = openEasel;
 })();

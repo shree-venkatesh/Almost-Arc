@@ -59,14 +59,22 @@ function startZen(opts = {}) {
   };
   const PathUtils = { profileDir: "/prof", join: (...a) => a.join("/") };
 
+  // items: ids, or {command} for Zen's + menu items (they have no id)
   const popup = (id, items) => {
-    const kids = items.map(i => ({ id: i, after(el) { kids.splice(kids.indexOf(this) + 1, 0, el); } }));
-    return { id, kids, querySelector: sel => kids.find(k => `#${k.id}` === sel) || null, prepend(el) { kids.unshift(el); } };
+    const kids = items.map(i => ({ ...(typeof i === "string" ? { id: i } : i),
+      after(el) { kids.splice(kids.indexOf(this) + 1, 0, el); },
+      before(el) { kids.splice(kids.indexOf(this), 0, el); } }));
+    const matches = (k, sel) => sel === `#${k.id}` || sel === `menuitem[command="${k.command}"]`;
+    return { id, kids, querySelector: sel => kids.find(k => matches(k, sel)) || null, prepend(el) { kids.unshift(el); } };
   };
   const menus = { menu_FilePopup: popup("menu_FilePopup", ["menu_newNavigatorTab", "menu_newPrivateWindow"]),
     tabContextMenu: popup("tabContextMenu", ["context_openANewTab", "context_reloadTab"]) };
+  if (!o.noPlus) menus.zenCreateNewPopup = popup("zenCreateNewPopup",
+    [{ command: "cmd_zenOpenWorkspaceCreation" }, { command: "cmd_zenOpenFolderCreation" },
+     { command: "cmd_zenNewEmptySplit" }, { command: "cmd_newNavigatorTab" }]);
+  const winListeners = {};
   const document = {
-    getElementById: id => menus[id] || [...menus.menu_FilePopup.kids, ...menus.tabContextMenu.kids].find(k => k.id === id) || null,
+    getElementById: id => menus[id] || Object.values(menus).flatMap(m => m.kids).find(k => k.id === id) || null,
     createXULElement: () => {
       const listeners = {};
       return { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener: (t, fn) => (listeners[t] = fn),
@@ -86,11 +94,17 @@ function startZen(opts = {}) {
     Uint8Array, Array, Object, String, Number, Error, Promise, Math, Date, JSON,
   };
   context.window = context;
+  context.addEventListener = (t, fn) => (winListeners[t] ||= []).push(fn);
   vm.createContext(context);
   vm.runInContext(SRC, context, { filename: "arcEasel.uc.js" });
   return {
     files: o.files, writes, reg, opened, gBrowser, menus,
-    item: id => [...menus.menu_FilePopup.kids, ...menus.tabContextMenu.kids].find(k => k.id === id),
+    item: id => Object.values(menus).flatMap(m => m.kids).find(k => k.id === id),
+    /** Zen builds its + menu now (after the script ran) and opens it. */
+    plusMenuAppears() {
+      menus.zenCreateNewPopup ||= popup("zenCreateNewPopup", [{ command: "cmd_newNavigatorTab" }]);
+      (winListeners.popupshowing || []).forEach(fn => fn({ target: menus.zenCreateNewPopup }));
+    },
   };
 }
 
@@ -142,6 +156,35 @@ describe("easel: New Easel", () => {
     assert.deepEqual(z.menus.menu_FilePopup.kids.map(k => k.id), ["menu_newNavigatorTab", "almost-arc-new-easel", "menu_newPrivateWindow"]);
     assert.equal(z.menus.tabContextMenu.kids[1].id, "almost-arc-new-easel-tab");
     assert.equal(z.item("almost-arc-new-easel").attrs.label, "New Easel");
+  });
+
+  test("is in Zen's + menu (bottom of the sidebar), just above New Tab, with an icon", () => {
+    const z = startZen();
+    const kids = z.menus.zenCreateNewPopup.kids;
+    assert.deepEqual(kids.map(k => k.id || k.command), ["cmd_zenOpenWorkspaceCreation", "cmd_zenOpenFolderCreation",
+      "cmd_zenNewEmptySplit", "almost-arc-new-easel-plus", "cmd_newNavigatorTab"]);
+    assert.equal(kids[3].attrs.label, "New Easel");
+    assert.equal(kids[3].attrs.image, "chrome://almostarc-easel/content/menu-icon.svg");
+  });
+
+  test("the + menu's icon is written with the page, in the menu's text color", async () => {
+    const z = startZen();
+    await settle(); await settle();
+    assert.match(z.files.get(`${PAGE_DIR}/menu-icon.svg`), /stroke="context-fill"/);
+  });
+
+  test("a + menu Zen builds later still gets it, once", () => {
+    const z = startZen({ noPlus: true });
+    z.plusMenuAppears();
+    z.plusMenuAppears();            // opened again: no second copy
+    assert.deepEqual(z.menus.zenCreateNewPopup.kids.map(k => k.id || k.command), ["almost-arc-new-easel-plus", "cmd_newNavigatorTab"]);
+  });
+
+  test("New Easel in the + menu opens an easel", async () => {
+    const z = startZen();
+    z.item("almost-arc-new-easel-plus").command();
+    await settle(); await settle();
+    assert.equal(z.opened.length, 1);
   });
 
   test("opens and selects a new easel tab with its own id", async () => {
