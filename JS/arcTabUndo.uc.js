@@ -302,6 +302,9 @@
   window.addEventListener("keydown", e => {
     if (e.key?.toLowerCase() !== "z" || e.shiftKey || e.altKey) return;
     if (isMac ? (!e.metaKey || e.ctrlKey) : (!e.ctrlKey || e.metaKey)) return;
+    // An easel tab (arcEasel.uc.js) has its own Cmd+Z for the drawing.
+    const doc = e.target?.ownerDocument || e.target;
+    if (String(doc?.documentURI || "").startsWith("chrome://almostarc-easel/")) return;
     // Typing somewhere (web page text field, address bar, rename box…)? Then
     // Cmd+Z belongs to that text. The OS-level input state is accurate for both
     // web pages and Zen's own UI (unlike Firefox's undo-command state).

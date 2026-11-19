@@ -12,10 +12,12 @@ if [ -z "${ZEN_PROFILE:-}" ]; then
   ZEN_PROFILE="$ZEN_ROOT/$REL"
 fi
 CHROME="$ZEN_PROFILE/chrome"
-for f in arcToolbarTint arcUrlbarButtons arcUrlbarFit arcCompactSidebar arcDomainOnly arcAutoPip arcTabUndo arcPipFlick arcPipLayout arcNotices zzArcDebug zzPipDebug; do
+for f in arcToolbarTint arcUrlbarButtons arcUrlbarFit arcCompactSidebar arcDomainOnly arcAutoPip arcTabUndo arcPipFlick arcPipLayout arcColorWheel arcEasel arcNotices zzArcDebug zzPipDebug; do
   rm -f "$CHROME/JS/$f.uc.js"
 done
 rm -f "$CHROME/almost-arc.css" "$CHROME/almost-arc-install.json"
+# the easel page arcEasel.uc.js wrote (your drawings in <profile>/almost-arc-easels stay)
+rm -rf "$CHROME/almost-arc-easel"
 [ -f "$CHROME/userChrome.css" ] && sed -i.bak '/almost-arc.css/d' "$CHROME/userChrome.css"
 [ -f "$ZEN_PROFILE/user.js" ] && sed -i.bak '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$ZEN_PROFILE/user.js"
 # Remove the Almost Arc app icon that install.sh set (macOS). A Finder custom icon

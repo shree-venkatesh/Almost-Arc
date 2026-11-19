@@ -106,5 +106,11 @@
     "label": "Arc-style color wheel in Zen's space theme picker (restart Zen)",
     "type": "checkbox",
     "defaultValue": true
+  },
+  {
+    "property": "almost-arc.easel",
+    "label": "Easels: \"New Easel\" in the File menu and tab menu opens a tab you can draw in (restart Zen)",
+    "type": "checkbox",
+    "defaultValue": true
   }
 ]

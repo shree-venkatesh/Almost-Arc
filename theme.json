@@ -68,6 +68,11 @@
           "chrome://browser/content/browser.xhtml"
         ]
       },
+      "arcEasel.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
       "arcNotices.uc.js": {
         "include": [
           "chrome://browser/content/browser.xhtml"

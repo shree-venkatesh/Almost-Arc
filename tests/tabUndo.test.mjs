@@ -221,9 +221,9 @@ async function load(opts = {}) {
     /** A click somewhere else in Zen (not the picker). */
     clickOutside() { fire(winListeners, "mouseup", { isTrusted: true, type: "mouseup", target: outside }); },
     /** Press Cmd+Z; resolves when the undo is done. Returns whether Cmd+Z was taken. */
-    async cmdZ() {
+    async cmdZ(target = null) {
       let taken = false;
-      fire(winListeners, "keydown", { key: "z", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false,
+      fire(winListeners, "keydown", { key: "z", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false, target,
         preventDefault() { taken = true; }, stopPropagation() {} });
       await flush();
       await tick(600);
@@ -339,6 +339,15 @@ describe("tab undo: what gets recorded", () => {
     await z.userCloses(z.open[0]);
     assert.equal(await z.cmdZ(), false);
     assert.equal(z.open.length, 4);
+  });
+
+  test("Cmd+Z in an easel tab is the easel's (its drawing), not a tab undo", async () => {
+    const z = await load({ tabs: 5 });
+    await z.userCloses(z.open[0]);
+    const inEasel = { ownerDocument: { documentURI: "chrome://almostarc-easel/content/easel.html#abcdef0123456789" } };
+    assert.equal(await z.cmdZ(inEasel), false);
+    assert.equal(z.open.length, 4);
+    assert.ok(await z.cmdZ());               // elsewhere it still undoes the close
   });
 
   test("a tab closed without your input (by a site or Zen) isn't recorded", async () => {
