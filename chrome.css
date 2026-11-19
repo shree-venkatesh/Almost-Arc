@@ -451,7 +451,22 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
 @keyframes almost-arc-js-notice { to { opacity: 1; } }
 
 /* Easel tabs (arcEasel.uc.js sets the attribute while one is selected): no top toolbar,
-   the drawing fills the card */
-:root[almost-arc-easel]:not([zen-single-toolbar="true"]):not([inDOMFullscreen="true"]):not([popup-window]) #zen-appcontent-navbar-wrapper {
-  display: none !important;
+   the drawing fills the card. The toolbar's row stays as an empty spacer so its top margin
+   (the gap above the card) stays; the card gets back its rounded top corners. */
+:root[almost-arc-easel]:not([zen-single-toolbar="true"]):not([inDOMFullscreen="true"]):not([popup-window]) {
+  #zen-appcontent-navbar-wrapper {
+    height: 0 !important;
+    min-height: 0 !important;
+    border-bottom: 0 !important;
+    background: none !important;
+    overflow: clip !important;
+    visibility: hidden !important;
+  }
+  #zen-appcontent-navbar-wrapper::before {
+    display: none !important;
+  }
+  #tabbrowser-tabbox #tabbrowser-tabpanels .browserSidebarContainer:not(.zen-glance-overlay) {
+    border-top-left-radius: calc(var(--zen-native-inner-radius) / var(--zen-squircle-value)) !important;
+    border-top-right-radius: calc(var(--zen-native-inner-radius) / var(--zen-squircle-value)) !important;
+  }
 }

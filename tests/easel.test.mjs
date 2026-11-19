@@ -255,7 +255,12 @@ describe("easel: Zen's toolbar", () => {
 
   test("chrome.css hides the top toolbar for it (Arc layout only)", () => {
     const css = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "chrome.css"), "utf8");
-    assert.match(css, /:root\[almost-arc-easel\]:not\(\[zen-single-toolbar="true"\]\)[^{]*#zen-appcontent-navbar-wrapper\s*\{\s*display: none !important;/);
+    const block = css.slice(css.indexOf(':root[almost-arc-easel]:not([zen-single-toolbar="true"])'));
+    assert.ok(block.length < css.length, "the easel rule is there");
+    // Owner, 2026-11-19: display: none on the toolbar also took the gap above the card
+    assert.match(block, /#zen-appcontent-navbar-wrapper \{[^}]*height: 0 !important;[^}]*visibility: hidden !important;/);
+    assert.doesNotMatch(block.match(/#zen-appcontent-navbar-wrapper \{[^}]*\}/)[0], /margin|display/, "keeps its margin");
+    assert.match(block, /\.browserSidebarContainer[^{]*\{\s*border-top-left-radius: calc\(var\(--zen-native-inner-radius\)/);
   });
 });
 
