@@ -449,3 +449,9 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
   }
 }
 @keyframes almost-arc-js-notice { to { opacity: 1; } }
+
+/* Easel tabs (arcEasel.uc.js sets the attribute while one is selected): no top toolbar,
+   the drawing fills the card */
+:root[almost-arc-easel]:not([zen-single-toolbar="true"]):not([inDOMFullscreen="true"]):not([popup-window]) #zen-appcontent-navbar-wrapper {
+  display: none !important;
+}

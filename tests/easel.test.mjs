@@ -73,7 +73,9 @@ function startZen(opts = {}) {
     [{ command: "cmd_zenOpenWorkspaceCreation" }, { command: "cmd_zenOpenFolderCreation" },
      { command: "cmd_zenNewEmptySplit" }, { command: "cmd_newNavigatorTab" }]);
   const winListeners = {};
+  const rootAttrs = new Set();
   const document = {
+    documentElement: { toggleAttribute: (k, on) => (on ? rootAttrs.add(k) : rootAttrs.delete(k)) },
     getElementById: id => menus[id] || Object.values(menus).flatMap(m => m.kids).find(k => k.id === id) || null,
     createXULElement: () => {
       const listeners = {};
@@ -82,10 +84,14 @@ function startZen(opts = {}) {
     },
   };
   const opened = [];
+  const tabListeners = {}, progress = [];
   const gBrowser = {
     tabs: o.tabs,
     addTab(url, params) { const tab = { url, params }; opened.push(tab); return tab; },
     selectedTab: null,
+    selectedBrowser: { currentURI: { spec: o.selected || "https://example.com/" } },
+    tabContainer: { addEventListener: (t, fn) => (tabListeners[t] = fn) },
+    addTabsProgressListener: l => progress.push(l),
   };
   const context = {
     Services, Cc, Ci, Components, IOUtils, PathUtils, document, gBrowser,
@@ -99,6 +105,11 @@ function startZen(opts = {}) {
   vm.runInContext(SRC, context, { filename: "arcEasel.uc.js" });
   return {
     files: o.files, writes, reg, opened, gBrowser, menus,
+    get toolbarHidden() { return rootAttrs.has("almost-arc-easel"); },
+    /** You switch to a tab showing this address. */
+    selectTab(spec) { gBrowser.selectedBrowser = { currentURI: { spec } }; tabListeners.TabSelect?.(); },
+    /** The selected tab goes to another address. */
+    navigate(spec) { gBrowser.selectedBrowser.currentURI = { spec }; progress.forEach(l => l.onLocationChange(gBrowser.selectedBrowser)); },
     item: id => Object.values(menus).flatMap(m => m.kids).find(k => k.id === id),
     /** Zen builds its + menu now (after the script ran) and opens it. */
     plusMenuAppears() {
@@ -205,6 +216,35 @@ describe("easel: New Easel", () => {
   });
 });
 
+describe("easel: Zen's toolbar", () => {
+  const EASEL = `${PREFIX}easel.html#abcdef0123456789`;
+  test("hides while an easel tab is selected, and comes back on other tabs", () => {
+    const z = startZen();
+    assert.equal(z.toolbarHidden, false);
+    z.selectTab(EASEL);
+    assert.equal(z.toolbarHidden, true);
+    z.selectTab("https://example.com/");
+    assert.equal(z.toolbarHidden, false);
+  });
+
+  test("an easel selected when Zen starts: hidden from the start", () => {
+    assert.equal(startZen({ selected: EASEL }).toolbarHidden, true);
+  });
+
+  test("follows the selected tab going to or from an easel", () => {
+    const z = startZen();
+    z.navigate(EASEL);
+    assert.equal(z.toolbarHidden, true);
+    z.navigate("https://example.com/");
+    assert.equal(z.toolbarHidden, false);
+  });
+
+  test("chrome.css hides the top toolbar for it (Arc layout only)", () => {
+    const css = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "chrome.css"), "utf8");
+    assert.match(css, /:root\[almost-arc-easel\]:not\(\[zen-single-toolbar="true"\]\)[^{]*#zen-appcontent-navbar-wrapper\s*\{\s*display: none !important;/);
+  });
+});
+
 // ---- part 2: the page ----
 
 function pageSource() {
@@ -284,6 +324,7 @@ async function openPage(opts = {}) {
     render() { frames.splice(0).forEach(f => f()); return drawn; },
     stroke(...pts) { pointer("pointerdown", pts[0]); for (const q of pts.slice(1)) pointer("pointermove", q); pointer("pointerup", pts.at(-1)); },
     shiftClick(q) { pointer("pointerdown", q, true); pointer("pointerup", q, true); },
+    shiftStroke(...pts) { pointer("pointerdown", pts[0], true); for (const q of pts.slice(1)) pointer("pointermove", q, true); pointer("pointerup", pts.at(-1), true); },
     dblclick([x, y]) { ink.dblclick({ clientX: x, clientY: y }); },
     tool: t => click("tools", "data-tool", t),
     color: c => click("colors", "data-color", c),
@@ -304,7 +345,7 @@ async function openPage(opts = {}) {
   return p;
 }
 
-const firsts = data => data.items.map(s => (s.k === "text" ? s.v : s.p[0]));
+const firsts = data => data.items.map(s => (s.k === "text" ? s.v : s.k ? s.k : s.p[0]));
 
 describe("easel page: drawing and saving", () => {
   test("a line you draw is saved with its color and size", async () => {
@@ -636,5 +677,91 @@ describe("easel page: selecting", () => {
     p.tool("select");
     p.stroke([25, 0]);
     assert.equal(p.els.undo.disabled, true);
+  });
+});
+
+describe("easel page: shapes", () => {
+  test("drag with the rectangle, ellipse or arrow tool: that shape, from where you started to where you let go", async () => {
+    const p = await openPage();
+    p.color("#0090ff");
+    for (const [t, from, to] of [["rect", [10, 10], [110, 60]], ["ellipse", [200, 200], [150, 120]], ["arrow", [0, 300], [80, 250]]]) {
+      p.tool(t);
+      p.stroke(from, [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2], to);
+    }
+    assert.deepEqual((await p.saved()).items, [
+      { k: "rect", c: "#0090ff", w: 5, x0: 10, y0: 10, x1: 110, y1: 60 },
+      { k: "ellipse", c: "#0090ff", w: 5, x0: 200, y0: 200, x1: 150, y1: 120 },
+      { k: "arrow", c: "#0090ff", w: 5, x0: 0, y0: 300, x1: 80, y1: 250 },
+    ]);
+  });
+
+  test("Shift: a square, a circle, an arrow at 45 degrees", async () => {
+    const p = await openPage();
+    p.tool("rect"); p.shiftStroke([0, 0], [100, -40]);
+    p.tool("ellipse"); p.shiftStroke([0, 0], [-30, 70]);
+    p.tool("arrow"); p.shiftStroke([0, 0], [100, 90]);
+    const [r, e, a] = (await p.saved()).items;
+    assert.deepEqual([r.x1, r.y1], [100, -100]);
+    assert.deepEqual([e.x1, e.y1], [-70, 70]);
+    assert.ok(Math.abs(a.x1 - a.y1) < 0.2 && a.x1 > 90, `${a.x1}, ${a.y1}`);
+  });
+
+  test("a click without dragging makes no shape", async () => {
+    const p = await openPage();
+    p.tool("rect");
+    p.stroke([50, 50], [51, 51]);
+    assert.equal(await p.saved(), undefined);
+    assert.equal(p.els.undo.disabled, true);
+  });
+
+  const box = { v: 2, name: "", items: [{ k: "rect", c: "ink", w: 5, x0: 100, y0: 100, x1: 200, y1: 200 },
+    { k: "arrow", c: "ink", w: 5, x0: 300, y0: 300, x1: 400, y1: 300 },
+    { k: "ellipse", c: "ink", w: 5, x0: 500, y0: 100, x1: 600, y1: 160 }] };
+
+  test("select, move, restyle and delete shapes like anything else", async () => {
+    const p = await openPage({ saved: box });
+    p.tool("select");
+    p.stroke([100, 150], [110, 160]);            // grab the rectangle by its left edge
+    let data = await p.saved();
+    assert.deepEqual([data.items[0].x0, data.items[0].y0, data.items[0].x1, data.items[0].y1], [110, 110, 210, 210]);
+    p.size(10);
+    assert.equal((await p.saved()).items[0].w, 10);
+    p.key("Backspace", { mod: false });
+    assert.deepEqual(firsts(await p.saved()), ["arrow", "ellipse"]);
+  });
+
+  test("a shape is picked by its outline, not its empty middle", async () => {
+    const p = await openPage({ saved: box });
+    p.tool("select");
+    p.stroke([150, 150], [160, 160]);            // middle of the rectangle: a selection box, nothing moves
+    assert.equal(p.els.undo.disabled, true);
+    p.stroke([550, 100], [550, 110]);            // top of the ellipse
+    assert.equal((await p.saved()).items[2].y0, 110);
+    p.stroke([395, 295], [395, 305]);            // the arrowhead
+    assert.equal((await p.saved()).items[1].y0, 310);
+  });
+
+  test("a selection box over part of a shape picks it", async () => {
+    const p = await openPage({ saved: box });
+    p.tool("select");
+    p.stroke([190, 190], [250, 250]);
+    p.key("Delete", { mod: false });
+    assert.deepEqual(firsts(await p.saved()), ["arrow", "ellipse"]);
+  });
+
+  test("the eraser removes a shape it touches; Cmd+Z brings it back", async () => {
+    const p = await openPage({ saved: box });
+    p.tool("eraser");
+    p.stroke([350, 290], [350, 310]);
+    assert.deepEqual(firsts(await p.saved()), ["rect", "ellipse"]);
+    p.key("z");
+    assert.deepEqual(firsts(await p.saved()), ["rect", "arrow", "ellipse"]);
+  });
+
+  test("a shape in the saved file with a bad number is dropped", async () => {
+    const p = await openPage({ saved: { v: 2, name: "", items: [{ k: "rect", c: "ink", w: 5, x0: 1, y0: 1, x1: "2", y1: 2 },
+      { k: "star", c: "ink", w: 5, x0: 1, y0: 1, x1: 2, y1: 2 }, box.items[0]] } });
+    p.stroke([9, 9]);
+    assert.deepEqual(firsts(await p.saved()), ["rect", [9, 9]]);
   });
 });

@@ -3,10 +3,12 @@
 // @description    Arc-style easels: a tab you draw in. "New Easel" (Zen's + button
 //                 at the bottom of the sidebar, File menu, tab context menu) opens one; it saves as you draw and comes back with the
 //                 tab (pin it, put it in a folder, restart Zen: the drawing is still
-//                 there). Select (drag a box; move, delete, restyle), pen, text boxes, eraser,
+//                 there). Select (drag a box; move, delete, restyle), pen, text boxes, shapes
+//                 (rectangle, ellipse, arrow; Shift constrains), eraser,
 //                 colors, sizes, undo/redo (Cmd+Z / Cmd+Shift+Z),
 //                 two-finger scroll to move around. Drawings are saved in the profile
-//                 folder, <profile>/almost-arc-easels/<id>.json.
+//                 folder, <profile>/almost-arc-easels/<id>.json. Zen's top toolbar hides
+//                 while an easel tab is selected.
 //                 Pref: almost-arc.easel (default true)
 // ==/UserScript==
 
@@ -61,7 +63,8 @@
     const ctx = canvas.getContext("2d");
     const nameEl = $("name");
     const editor = $("editor");
-    // items: lines {c, w, p: [[x, y]…]} and text boxes {k: "text", c, f, x, y, v}, bottom to top
+    // items, bottom to top: lines {c, w, p: [[x, y]…]}, text boxes {k: "text", c, f, x, y, v},
+    // shapes {k: "rect" | "ellipse" | "arrow", c, w, x0, y0, x1, y1}
     let doc = { v: 2, name: "", items: [] };
     let loaded = false;
     let tool = "pen", color = COLORS[0], size = SIZES[1];
@@ -73,6 +76,8 @@
     let editing = null;                  // text box being typed in: {item, isNew, before}
     const undoStack = [], redoStack = [];
     const isText = s => s.k === "text";
+    const SHAPES = ["rect", "ellipse", "arrow"];   // {k, c, w, x0, y0, x1, y1}: drag start to end
+    const isShape = s => SHAPES.includes(s.k);
 
     // ---- saved file ----
     const num = v => typeof v === "number" && Number.isFinite(v);
@@ -84,6 +89,11 @@
       const list = Array.isArray(data?.items) ? data.items : Array.isArray(data?.strokes) ? data.strokes : [];
       for (const s of list) {
         if (!COLORS.includes(s?.c)) continue;
+        if (SHAPES.includes(s.k)) {
+          if (!num(s.w) || ![s.x0, s.y0, s.x1, s.y1].every(num)) continue;
+          out.items.push({ k: s.k, c: s.c, w: clamp(s.w, 1, 40), x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1 });
+          continue;
+        }
         if (s.k === "text") {
           if (typeof s.v !== "string" || !s.v.trim() || !num(s.x) || !num(s.y) || !num(s.f)) continue;
           out.items.push({ k: "text", c: s.c, f: clamp(s.f, 8, 120), x: s.x, y: s.y, v: s.v.slice(0, 5000) });
@@ -137,7 +147,17 @@
       ctx.font = `${s.f}px ${FONT}`;
       return Math.max(s.f * 0.3, ...lines(s).map(l => ctx.measureText(l).width));
     }
+    // the arrowhead: two short lines back from the tip
+    const headLen = s => Math.max(10, s.w * 3);
+    function headLines(s) {
+      const a = Math.atan2(s.y1 - s.y0, s.x1 - s.x0), L = headLen(s), tip = [s.x1, s.y1];
+      return [-0.5, 0.5].map(d => [tip, [s.x1 - L * Math.cos(a + d), s.y1 - L * Math.sin(a + d)]]);
+    }
     function bbox(s) {
+      if (isShape(s)) {
+        const r = s.w / 2 + (s.k === "arrow" ? headLen(s) : 0);
+        return { x0: Math.min(s.x0, s.x1) - r, y0: Math.min(s.y0, s.y1) - r, x1: Math.max(s.x0, s.x1) + r, y1: Math.max(s.y0, s.y1) + r };
+      }
       if (isText(s)) return { x0: s.x, y0: s.y, x1: s.x + textWidth(s), y1: s.y + lines(s).length * s.f * LINE };
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const [x, y] of s.p) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -151,6 +171,20 @@
       return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
     }
     function hit(s, x, y, r) {
+      if (isShape(s)) {                       // on the outline (or the arrow), not inside
+        const R = r + s.w / 2;
+        const x0 = Math.min(s.x0, s.x1), x1 = Math.max(s.x0, s.x1), y0 = Math.min(s.y0, s.y1), y1 = Math.max(s.y0, s.y1);
+        if (s.k === "arrow") {
+          return [[[s.x0, s.y0], [s.x1, s.y1]], ...headLines(s)].some(([a, b]) => distToSegment(x, y, a, b) <= R);
+        }
+        const rx = (x1 - x0) / 2, ry = (y1 - y0) / 2;
+        if (s.k === "ellipse" && rx > 1 && ry > 1) {
+          const d = Math.hypot((x - x0 - rx) / rx, (y - y0 - ry) / ry);
+          return Math.abs(d - 1) * Math.min(rx, ry) <= R;
+        }
+        const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+        return c.some((a, i) => distToSegment(x, y, a, c[(i + 1) % 4]) <= R);
+      }
       if (isText(s)) {
         const b = bbox(s);
         return x >= b.x0 - r && x <= b.x1 + r && y >= b.y0 - r && y <= b.y1 + r;
@@ -166,7 +200,8 @@
       return null;
     }
     function shift(s, dx, dy) {
-      if (isText(s)) { s.x += dx; s.y += dy; }
+      if (isShape(s)) { s.x0 += dx; s.x1 += dx; s.y0 += dy; s.y1 += dy; }
+      else if (isText(s)) { s.x += dx; s.y += dy; }
       else for (const q of s.p) { q[0] += dx; q[1] += dy; }
     }
 
@@ -190,6 +225,25 @@
       ctx.lineTo(last[0] + view.x, last[1] + view.y);
       ctx.stroke();
     }
+    function drawShape(s) {
+      ctx.beginPath();
+      ctx.lineWidth = s.w;
+      ctx.strokeStyle = inkColor(s.c);
+      const x0 = Math.min(s.x0, s.x1) + view.x, y0 = Math.min(s.y0, s.y1) + view.y;
+      const w = Math.abs(s.x1 - s.x0), h = Math.abs(s.y1 - s.y0);
+      if (s.k === "rect") {
+        if (ctx.roundRect) ctx.roundRect(x0, y0, w, h, Math.min(6, w / 2, h / 2));
+        else ctx.rect(x0, y0, w, h);
+      } else if (s.k === "ellipse") {
+        ctx.ellipse(x0 + w / 2, y0 + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      } else {
+        ctx.moveTo(s.x0 + view.x, s.y0 + view.y);
+        ctx.lineTo(s.x1 + view.x, s.y1 + view.y);
+        for (const [a, b] of headLines(s)) { ctx.moveTo(a[0] + view.x, a[1] + view.y); ctx.lineTo(b[0] + view.x, b[1] + view.y); }
+      }
+      ctx.stroke();
+    }
+    const paint = s => (isText(s) ? drawText(s) : isShape(s) ? drawShape(s) : strokePath(s));
     function drawText(s) {
       ctx.font = `${s.f}px ${FONT}`;
       ctx.fillStyle = inkColor(s.c);
@@ -209,9 +263,9 @@
         ctx.lineJoin = "round";
         for (const s of doc.items) {
           if (editing?.item === s) continue;          // the text field shows it
-          if (isText(s)) drawText(s); else strokePath(s);
+          paint(s);
         }
-        if (current) strokePath(current);
+        if (current) paint(current);
         // selection
         const accent = cssVar("--select", "#0090ff");
         ctx.lineWidth = 1;
@@ -354,7 +408,7 @@
       return { x0: Math.min(a[0], b[0]), y0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), y1: Math.max(a[1], b[1]) };
     }
     function inBox(s, r) {
-      if (isText(s)) {
+      if (isText(s) || isShape(s)) {
         const b = bbox(s);
         return b.x0 <= r.x1 && b.x1 >= r.x0 && b.y0 <= r.y1 && b.y1 >= r.y0;
       }
@@ -402,6 +456,8 @@
       } else if (tool === "eraser") {
         erasing = [];
         eraseAt(...q);
+      } else if (SHAPES.includes(tool)) {
+        current = { k: tool, c: color, w: size, x0: q[0], y0: q[1], x1: q[0], y1: q[1] };
       } else {
         current = { c: color, w: size, p: [q] };
         draw();
@@ -422,6 +478,8 @@
           selected = new Set([...drag.base, ...doc.items.filter(s => inBox(s, r))]);
         } else if (erasing) {
           eraseAt(...q);
+        } else if (current && isShape(current)) {
+          shapeTo(current, q, ev.shiftKey);
         } else if (current) {
           const last = current.p[current.p.length - 1];
           if (Math.hypot(q[0] - last[0], q[1] - last[1]) >= 1) current.p.push(q);
@@ -429,8 +487,22 @@
       }
       draw();
     });
+    // Shift: a square, a circle, or an arrow at a multiple of 45 degrees
+    function shapeTo(s, [x, y], constrain) {
+      const dx = x - s.x0, dy = y - s.y0;
+      if (constrain && s.k === "arrow") {
+        const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy);
+        x = s.x0 + len * Math.cos(a); y = s.y0 + len * Math.sin(a);
+      } else if (constrain) {
+        const m = Math.max(Math.abs(dx), Math.abs(dy));
+        x = s.x0 + (dx < 0 ? -m : m); y = s.y0 + (dy < 0 ? -m : m);
+      }
+      s.x1 = Math.round(x * 10) / 10; s.y1 = Math.round(y * 10) / 10;
+    }
     function finish() {
-      if (current) {
+      if (current && isShape(current) && Math.abs(current.x1 - current.x0) < 3 && Math.abs(current.y1 - current.y0) < 3) {
+        current = null;                       // a click, not a drag: no shape
+      } else if (current) {
         const s = current;
         current = null;
         doc.items.push(s);
@@ -641,6 +713,9 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
   const svg = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const ICONS = {
     select: svg('<path d="M6 4l12 7.5-5.2 1.3L10 18z"/>'),
+    rect: svg('<rect x="4.5" y="6" width="15" height="12" rx="2"/>'),
+    ellipse: svg('<ellipse cx="12" cy="12" rx="8" ry="6.5"/>'),
+    arrow: svg('<path d="M5 19L19 5"/><path d="M10.5 5H19v8.5"/>'),
     text: svg('<path d="M6 7V5h12v2"/><path d="M12 5v14"/><path d="M9.5 19h5"/>'),
     pen: svg('<path d="M4 20l1-4L16 5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14 7l3 3"/>'),
     eraser: svg('<path d="M8 20h12"/><path d="M5.5 15.5l9-9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L11 18H7.5z"/><path d="M10 11l4 4"/>'),
@@ -678,6 +753,9 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
     <button data-tool="select" title="Select: drag a box, or click; then drag to move, Delete to remove" aria-label="Select">${ICONS.select}</button>
     <button data-tool="pen" title="Pen" aria-label="Pen">${ICONS.pen}</button>
     <button data-tool="text" title="Text: click to type" aria-label="Text">${ICONS.text}</button>
+    <button data-tool="rect" title="Rectangle (Shift: square)" aria-label="Rectangle">${ICONS.rect}</button>
+    <button data-tool="ellipse" title="Ellipse (Shift: circle)" aria-label="Ellipse">${ICONS.ellipse}</button>
+    <button data-tool="arrow" title="Arrow (Shift: straight or 45 degrees)" aria-label="Arrow">${ICONS.arrow}</button>
     <button data-tool="eraser" title="Eraser" aria-label="Eraser">${ICONS.eraser}</button>
   </div>
   <div class="sep"></div>
@@ -792,5 +870,16 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
   window.addEventListener("popupshowing", e => {
     if (e.target?.id === PLUS_POPUP) try { addToPlus(); } catch (err) { console.warn("[arcEasel]", err); }
   }, true);
+  // Zen's top toolbar hides while an easel tab is selected (chrome.css, :root[almost-arc-easel])
+  function syncToolbar() {
+    document.documentElement.toggleAttribute("almost-arc-easel", isEasel(gBrowser.selectedBrowser?.currentURI?.spec));
+  }
+  try {
+    gBrowser.tabContainer.addEventListener("TabSelect", syncToolbar);
+    gBrowser.addTabsProgressListener({
+      onLocationChange(browser) { if (browser === gBrowser.selectedBrowser) syncToolbar(); },
+    });
+    syncToolbar();
+  } catch (e) { console.warn("[arcEasel]", e); }
   window.__arcEaselOpen = openEasel;
 })();
