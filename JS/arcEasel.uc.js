@@ -3,7 +3,8 @@
 // @description    Arc-style easels: a tab you draw in. "New Easel" (Zen's + button
 //                 at the bottom of the sidebar, File menu, tab context menu) opens one; it saves as you draw and comes back with the
 //                 tab (pin it, put it in a folder, restart Zen: the drawing is still
-//                 there). Pen, eraser, colors, sizes, undo/redo (Cmd+Z / Cmd+Shift+Z),
+//                 there). Select (drag a box; move, delete, restyle), pen, text boxes, eraser,
+//                 colors, sizes, undo/redo (Cmd+Z / Cmd+Shift+Z),
 //                 two-finger scroll to move around. Drawings are saved in the profile
 //                 folder, <profile>/almost-arc-easels/<id>.json.
 //                 Pref: almost-arc.easel (default true)
@@ -41,6 +42,9 @@
     const VALID_ID = /^[a-z0-9]{8,32}$/;
     const COLORS = ["ink", "#e5484d", "#f76b15", "#ffc53d", "#30a46c", "#0090ff", "#8e4ec6"];
     const SIZES = [2, 5, 10];
+    const TEXT_SIZES = { 2: 16, 5: 24, 10: 40 };   // font size (px) for each size button
+    const LINE = 1.25;                              // text line height
+    const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
     const SAVE_MS = 400;
     const $ = id => document.getElementById(id);
 
@@ -56,23 +60,38 @@
     const canvas = $("ink");
     const ctx = canvas.getContext("2d");
     const nameEl = $("name");
-    let doc = { v: 1, name: "", strokes: [] };
+    const editor = $("editor");
+    // items: lines {c, w, p: [[x, y]…]} and text boxes {k: "text", c, f, x, y, v}, bottom to top
+    let doc = { v: 2, name: "", items: [] };
     let loaded = false;
     let tool = "pen", color = COLORS[0], size = SIZES[1];
     let view = { x: 0, y: 0 };            // how far you've scrolled the drawing
-    let current = null;                  // the stroke being drawn
-    let erasing = null;                  // [[index, stroke]] removed by this eraser drag
+    let current = null;                  // the line being drawn
+    let erasing = null;                  // [[index, item]] removed by this eraser drag
+    let selected = new Set();            // select tool
+    let drag = null;                     // select tool: {kind: "move", last, dx, dy} or {kind: "box", from, to, base}
+    let editing = null;                  // text box being typed in: {item, isNew, before}
     const undoStack = [], redoStack = [];
+    const isText = s => s.k === "text";
 
     // ---- saved file ----
     const num = v => typeof v === "number" && Number.isFinite(v);
+    const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
     function clean(data) {
-      const out = { v: 1, name: "", strokes: [] };
+      const out = { v: 2, name: "", items: [] };
       if (typeof data?.name === "string") out.name = data.name.slice(0, 200);
-      for (const s of Array.isArray(data?.strokes) ? data.strokes : []) {
-        if (!COLORS.includes(s?.c) || !num(s?.w) || !Array.isArray(s?.p)) continue;
+      // v1 files (lines only) called the list "strokes"
+      const list = Array.isArray(data?.items) ? data.items : Array.isArray(data?.strokes) ? data.strokes : [];
+      for (const s of list) {
+        if (!COLORS.includes(s?.c)) continue;
+        if (s.k === "text") {
+          if (typeof s.v !== "string" || !s.v.trim() || !num(s.x) || !num(s.y) || !num(s.f)) continue;
+          out.items.push({ k: "text", c: s.c, f: clamp(s.f, 8, 120), x: s.x, y: s.y, v: s.v.slice(0, 5000) });
+          continue;
+        }
+        if (!num(s.w) || !Array.isArray(s.p)) continue;
         const p = s.p.filter(q => Array.isArray(q) && num(q[0]) && num(q[1])).map(q => [q[0], q[1]]);
-        if (p.length) out.strokes.push({ c: s.c, w: Math.min(Math.max(s.w, 1), 40), p });
+        if (p.length) out.items.push({ c: s.c, w: clamp(s.w, 1, 40), p });
       }
       return out;
     }
@@ -103,14 +122,55 @@
       loaded = true;
       nameEl.value = doc.name;
       showName();
+      updateButtons();
       draw();
     }
 
-    // ---- drawing ----
+    // ---- shapes ----
     function inkColor(c) {
       if (c !== "ink") return c;
       return getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#1d1c1a";
     }
+    const cssVar = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    const lines = s => s.v.split("\n");
+    function textWidth(s) {
+      ctx.font = `${s.f}px ${FONT}`;
+      return Math.max(s.f * 0.3, ...lines(s).map(l => ctx.measureText(l).width));
+    }
+    function bbox(s) {
+      if (isText(s)) return { x0: s.x, y0: s.y, x1: s.x + textWidth(s), y1: s.y + lines(s).length * s.f * LINE };
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [x, y] of s.p) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      const r = s.w / 2;
+      return { x0: x0 - r, y0: y0 - r, x1: x1 + r, y1: y1 + r };
+    }
+    function distToSegment(px, py, a, b) {
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / len)) : 0;
+      return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+    }
+    function hit(s, x, y, r) {
+      if (isText(s)) {
+        const b = bbox(s);
+        return x >= b.x0 - r && x <= b.x1 + r && y >= b.y0 - r && y <= b.y1 + r;
+      }
+      const p = s.p;
+      for (let j = 0; j < p.length; j++) {
+        if (distToSegment(x, y, p[j], p[Math.min(j + 1, p.length - 1)]) <= r + s.w / 2) return true;
+      }
+      return false;
+    }
+    function topAt(x, y) {
+      for (let i = doc.items.length - 1; i >= 0; i--) if (hit(doc.items[i], x, y, 6)) return doc.items[i];
+      return null;
+    }
+    function shift(s, dx, dy) {
+      if (isText(s)) { s.x += dx; s.y += dy; }
+      else for (const q of s.p) { q[0] += dx; q[1] += dy; }
+    }
+
+    // ---- drawing ----
     function strokePath(s) {
       const p = s.p;
       ctx.beginPath();
@@ -130,6 +190,13 @@
       ctx.lineTo(last[0] + view.x, last[1] + view.y);
       ctx.stroke();
     }
+    function drawText(s) {
+      ctx.font = `${s.f}px ${FONT}`;
+      ctx.fillStyle = inkColor(s.c);
+      ctx.textBaseline = "top";
+      const pad = (s.f * LINE - s.f) / 2;   // the same line box as the text field
+      lines(s).forEach((l, i) => ctx.fillText(l, s.x + view.x, s.y + view.y + i * s.f * LINE + pad));
+    }
     let frame = 0;
     function draw() {
       if (frame) return;
@@ -140,14 +207,36 @@
         ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
-        for (const s of doc.strokes) strokePath(s);
+        for (const s of doc.items) {
+          if (editing?.item === s) continue;          // the text field shows it
+          if (isText(s)) drawText(s); else strokePath(s);
+        }
         if (current) strokePath(current);
+        // selection
+        const accent = cssVar("--select", "#0090ff");
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = accent;
+        ctx.setLineDash?.([4, 3]);
+        for (const s of selected) {
+          const b = bbox(s);
+          ctx.strokeRect(b.x0 - 4 + view.x, b.y0 - 4 + view.y, b.x1 - b.x0 + 8, b.y1 - b.y0 + 8);
+        }
+        ctx.setLineDash?.([]);
+        if (drag?.kind === "box") {
+          const r = rect(drag.from, drag.to);
+          ctx.globalAlpha = 0.08;
+          ctx.fillStyle = accent;
+          ctx.fillRect(r.x0 + view.x, r.y0 + view.y, r.x1 - r.x0, r.y1 - r.y0);
+          ctx.globalAlpha = 1;
+          ctx.strokeRect(r.x0 + view.x, r.y0 + view.y, r.x1 - r.x0, r.y1 - r.y0);
+        }
       });
     }
     function resize() {
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(window.innerWidth * dpr);
       canvas.height = Math.round(window.innerHeight * dpr);
+      if (editing) placeEditor();
       draw();
     }
 
@@ -160,119 +249,258 @@
     }
     function apply(step, back) {
       if (step.t === "add") {
-        if (back) doc.strokes.splice(doc.strokes.lastIndexOf(step.s), 1);
-        else doc.strokes.push(step.s);
+        if (back) doc.items.splice(doc.items.lastIndexOf(step.s), 1);
+        else doc.items.push(step.s);
       } else if (step.t === "erase") {
-        if (back) for (const [i, s] of [...step.items].sort((a, b) => a[0] - b[0])) doc.strokes.splice(i, 0, s);
-        else for (const [, s] of step.items) doc.strokes.splice(doc.strokes.indexOf(s), 1);
+        if (back) for (const [i, s] of [...step.items].sort((a, b) => a[0] - b[0])) doc.items.splice(i, 0, s);
+        else for (const [, s] of step.items) doc.items.splice(doc.items.indexOf(s), 1);
       } else if (step.t === "clear") {
-        doc.strokes = back ? step.strokes.slice() : [];
+        doc.items = back ? step.items.slice() : [];
+      } else if (step.t === "move") {
+        for (const s of step.list) shift(s, back ? -step.dx : step.dx, back ? -step.dy : step.dy);
+      } else if (step.t === "set") {
+        for (const [s, before, after] of step.changes) Object.assign(s, back ? before : after);
       }
     }
-    function undo() {
-      const step = undoStack.pop();
+    function history(from, to, back) {
+      finishEdit();
+      const step = from.pop();
       if (!step) return;
-      apply(step, true);
-      redoStack.push(step);
+      apply(step, back);
+      to.push(step);
+      selected = new Set([...selected].filter(s => doc.items.includes(s)));
       updateButtons(); save(); draw();
     }
-    function redo() {
-      const step = redoStack.pop();
-      if (!step) return;
-      apply(step, false);
-      undoStack.push(step);
-      updateButtons(); save(); draw();
-    }
+    const undo = () => history(undoStack, redoStack, true);
+    const redo = () => history(redoStack, undoStack, false);
     function updateButtons() {
       $("undo").disabled = !undoStack.length;
       $("redo").disabled = !redoStack.length;
-      $("clear").disabled = !doc.strokes.length;
+      $("clear").disabled = !doc.items.length;
+    }
+    // removes items as one step (eraser drag, Delete), keeping where each was
+    function removeItems(list) {
+      const items = list.map(s => [doc.items.indexOf(s), s]).filter(([i]) => i >= 0).sort((a, b) => a[0] - b[0]);
+      if (!items.length) return;
+      for (const [, s] of items) doc.items.splice(doc.items.indexOf(s), 1);
+      done({ t: "erase", items });
     }
 
-    // ---- eraser: removes whole strokes it touches ----
-    function distToSegment(px, py, a, b) {
-      const dx = b[0] - a[0], dy = b[1] - a[1];
-      const len = dx * dx + dy * dy;
-      const t = len ? Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / len)) : 0;
-      return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
-    }
+    // ---- eraser: removes whole lines and text boxes it touches ----
     function eraseAt(x, y) {
-      const R = 8;
-      for (let i = doc.strokes.length - 1; i >= 0; i--) {
-        const s = doc.strokes[i], p = s.p;
-        let hit = false;
-        for (let j = 0; j < p.length && !hit; j++) {
-          hit = distToSegment(x, y, p[j], p[Math.min(j + 1, p.length - 1)]) <= R + s.w / 2;
-        }
-        if (hit) {
-          // index among the strokes as they were before this drag
-          let original = i;
-          for (const [k] of [...erasing].sort((a, b) => a[0] - b[0])) if (k <= original) original++;
-          erasing.push([original, s]);
-          doc.strokes.splice(i, 1);
-          draw();
-        }
+      for (let i = doc.items.length - 1; i >= 0; i--) {
+        const s = doc.items[i];
+        if (!hit(s, x, y, 8)) continue;
+        // index among the items as they were before this drag
+        let original = i;
+        for (const [k] of [...erasing].sort((a, b) => a[0] - b[0])) if (k <= original) original++;
+        erasing.push([original, s]);
+        doc.items.splice(i, 1);
+        draw();
       }
+    }
+
+    // ---- text boxes ----
+    function placeEditor() {
+      const s = editing.item;
+      editor.style.left = `${s.x + view.x}px`;
+      editor.style.top = `${s.y + view.y}px`;
+      editor.style.font = `${s.f}px/${LINE} ${FONT}`;
+      editor.style.color = inkColor(s.c);
+      editor.style.width = `${Math.ceil(textWidth(s) + s.f)}px`;
+      editor.style.height = `${Math.ceil(lines(s).length * s.f * LINE)}px`;
+    }
+    function startEdit(item, isNew) {
+      finishEdit();
+      selected = new Set();
+      editing = { item, isNew, before: { v: item.v, c: item.c, f: item.f } };
+      editor.value = item.v;
+      editor.hidden = false;
+      placeEditor();
+      editor.focus();
+      setTimeout(() => { if (editing?.item === item) editor.focus(); }, 0);
+      draw();
+    }
+    function finishEdit() {
+      if (!editing) return;
+      const { item, isNew, before } = editing;
+      editing = null;
+      editor.hidden = true;
+      item.v = item.v.replace(/\s+$/, "");
+      const empty = !item.v.trim();
+      if (isNew) {
+        if (!empty) { doc.items.push(item); done({ t: "add", s: item }); }
+      } else if (empty) {
+        Object.assign(item, before);            // so undo brings the text back
+        removeItems([item]);
+      } else {
+        const after = { v: item.v, c: item.c, f: item.f };
+        if (JSON.stringify(after) !== JSON.stringify(before)) done({ t: "set", changes: [[item, before, after]] });
+      }
+      draw();
+    }
+    editor.addEventListener("input", () => {
+      if (!editing) return;
+      editing.item.v = editor.value.slice(0, 5000);
+      placeEditor();
+    });
+    editor.addEventListener("keydown", e => {
+      if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) { e.preventDefault(); finishEdit(); }
+    });
+    editor.addEventListener("blur", () => finishEdit());
+
+    // ---- select tool ----
+    function rect(a, b) {
+      return { x0: Math.min(a[0], b[0]), y0: Math.min(a[1], b[1]), x1: Math.max(a[0], b[0]), y1: Math.max(a[1], b[1]) };
+    }
+    function inBox(s, r) {
+      if (isText(s)) {
+        const b = bbox(s);
+        return b.x0 <= r.x1 && b.x1 >= r.x0 && b.y0 <= r.y1 && b.y1 >= r.y0;
+      }
+      return s.p.some(([x, y]) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1);
+    }
+    function selectAll() {
+      finishEdit();
+      setTool("select");
+      selected = new Set(doc.items);
+      draw();
     }
 
     // ---- pointer ----
     const at = e => [Math.round((e.clientX - view.x) * 10) / 10, Math.round((e.clientY - view.y) * 10) / 10];
+    // keep the text field focused when you click the canvas (the click itself ends the edit)
+    canvas.addEventListener("mousedown", e => e.preventDefault());
     canvas.addEventListener("pointerdown", e => {
       if (e.button !== 0 || !loaded) return;
+      const q = at(e);
+      if (tool === "text") {
+        const wasEditing = !!editing;
+        finishEdit();
+        const t = topAt(...q);
+        if (t && isText(t)) { startEdit(t, false); return; }
+        if (wasEditing) return;                  // a click away from a text box just ends it
+        const f = TEXT_SIZES[size];
+        startEdit({ k: "text", c: color, f, x: q[0], y: Math.round((q[1] - f * LINE / 2) * 10) / 10, v: "" }, true);
+        return;
+      }
+      finishEdit();
       canvas.setPointerCapture?.(e.pointerId);
-      if (tool === "eraser") {
+      if (tool === "select") {
+        const t = topAt(...q);
+        if (t && e.shiftKey) {
+          if (selected.has(t)) selected.delete(t); else selected.add(t);
+        } else if (t) {
+          if (!selected.has(t)) selected = new Set([t]);
+          drag = { kind: "move", last: q, dx: 0, dy: 0 };
+        } else {
+          const base = e.shiftKey ? new Set(selected) : new Set();
+          drag = { kind: "box", from: q, to: q, base };
+          selected = new Set(base);
+        }
+        draw();
+      } else if (tool === "eraser") {
         erasing = [];
-        eraseAt(...at(e));
+        eraseAt(...q);
       } else {
-        current = { c: color, w: size, p: [at(e)] };
+        current = { c: color, w: size, p: [q] };
         draw();
       }
     });
     canvas.addEventListener("pointermove", e => {
-      if (!current && !erasing) return;
+      if (!current && !erasing && !drag) return;
       const events = e.getCoalescedEvents?.() || [e];
       for (const ev of events.length ? events : [e]) {
         const q = at(ev);
-        if (erasing) { eraseAt(...q); continue; }
-        const last = current.p[current.p.length - 1];
-        if (Math.hypot(q[0] - last[0], q[1] - last[1]) >= 1) current.p.push(q);
+        if (drag?.kind === "move") {
+          const dx = q[0] - drag.last[0], dy = q[1] - drag.last[1];
+          for (const s of selected) shift(s, dx, dy);
+          drag.dx += dx; drag.dy += dy; drag.last = q;
+        } else if (drag?.kind === "box") {
+          drag.to = q;
+          const r = rect(drag.from, q);
+          selected = new Set([...drag.base, ...doc.items.filter(s => inBox(s, r))]);
+        } else if (erasing) {
+          eraseAt(...q);
+        } else if (current) {
+          const last = current.p[current.p.length - 1];
+          if (Math.hypot(q[0] - last[0], q[1] - last[1]) >= 1) current.p.push(q);
+        }
       }
-      if (current) draw();
+      draw();
     });
     function finish() {
       if (current) {
         const s = current;
         current = null;
-        doc.strokes.push(s);
+        doc.items.push(s);
         done({ t: "add", s });
-        draw();
       } else if (erasing) {
         const items = erasing;
         erasing = null;
         if (items.length) done({ t: "erase", items });
+      } else if (drag) {
+        const d = drag;
+        drag = null;
+        const dx = Math.round(d.dx * 10) / 10, dy = Math.round(d.dy * 10) / 10;
+        if (d.kind === "move" && (dx || dy)) done({ t: "move", list: [...selected], dx: d.dx, dy: d.dy });
       }
+      draw();
     }
     canvas.addEventListener("pointerup", finish);
     canvas.addEventListener("pointercancel", finish);
+    // double-click a text box with the select tool: edit it
+    canvas.addEventListener("dblclick", e => {
+      if (tool !== "select") return;
+      const t = topAt(...at(e));
+      if (t && isText(t)) startEdit(t, false);
+    });
 
     // two-finger scroll moves the drawing
     canvas.addEventListener("wheel", e => {
       e.preventDefault();
       const k = e.deltaMode === 1 ? 16 : 1;
       view = { x: view.x - e.deltaX * k, y: view.y - e.deltaY * k };
+      if (editing) placeEditor();
       draw();
     }, { passive: false });
 
     // ---- toolbar ----
-    function select(group, attr, value) {
+    // clicking the toolbar doesn't take the focus from a text box you're typing in
+    $("bar").addEventListener("mousedown", e => e.preventDefault());
+    function press(group, attr, value) {
       for (const b of $(group).querySelectorAll(`[${attr}]`)) {
         b.setAttribute("aria-pressed", String(b.getAttribute(attr) === String(value)));
       }
     }
     function setTool(t) {
+      if (t !== tool) finishEdit();
       tool = t;
+      if (t !== "select") selected = new Set();
       document.documentElement.dataset.tool = t;
-      select("tools", "data-tool", t);
+      press("tools", "data-tool", t);
+      draw();
+    }
+    // a color or size picked with something selected (or a text box open) restyles it
+    function restyle(change) {
+      if (editing) {
+        Object.assign(editing.item, change(editing.item));
+        placeEditor();
+        editor.focus();
+        return true;
+      }
+      if (!selected.size) return false;
+      const changes = [...selected].map(s => {
+        const after = change(s);
+        const before = Object.fromEntries(Object.keys(after).map(k => [k, s[k]]));
+        return [s, before, after];
+      }).filter(([, b, a]) => JSON.stringify(b) !== JSON.stringify(a));
+      if (changes.length) {
+        for (const [s, , a] of changes) Object.assign(s, a);
+        done({ t: "set", changes });
+        draw();
+      }
+      return true;
     }
     $("tools").addEventListener("click", e => {
       const b = e.target.closest?.("[data-tool]");
@@ -282,22 +510,25 @@
       const b = e.target.closest?.("[data-color]");
       if (!b) return;
       color = b.getAttribute("data-color");
-      select("colors", "data-color", color);
-      setTool("pen");
+      press("colors", "data-color", color);
+      if (!restyle(() => ({ c: color })) && (tool === "eraser" || tool === "select")) setTool("pen");
     });
     $("sizes").addEventListener("click", e => {
       const b = e.target.closest?.("[data-size]");
       if (!b) return;
       size = Number(b.getAttribute("data-size"));
-      select("sizes", "data-size", size);
+      press("sizes", "data-size", size);
+      restyle(s => (isText(s) ? { f: TEXT_SIZES[size] } : { w: size }));
     });
     $("undo").addEventListener("click", undo);
     $("redo").addEventListener("click", redo);
     $("clear").addEventListener("click", () => {
-      if (!doc.strokes.length) return;
-      const strokes = doc.strokes.slice();
-      doc.strokes = [];
-      done({ t: "clear", strokes });
+      finishEdit();
+      if (!doc.items.length) return;
+      const items = doc.items.slice();
+      doc.items = [];
+      selected = new Set();
+      done({ t: "clear", items });
       draw();
     });
 
@@ -317,26 +548,41 @@
     // ---- keys ----
     const isMac = /Mac/.test(navigator.platform);
     document.addEventListener("keydown", e => {
-      if (e.target === nameEl) return;            // typing the name: its own undo
+      if (e.target === nameEl || e.target === editor) return;   // typing: its own undo, select all, delete
       const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
       const key = e.key?.toLowerCase();
+      const take = () => { e.preventDefault(); e.stopPropagation(); };
       if (mod && !e.altKey && key === "z") {
-        e.preventDefault(); e.stopPropagation();
+        take();
         if (e.shiftKey) redo(); else undo();
       } else if (mod && !e.altKey && !e.shiftKey && key === "y" && !isMac) {
-        e.preventDefault(); e.stopPropagation();
-        redo();
+        take(); redo();
+      } else if (mod && !e.altKey && !e.shiftKey && key === "a") {
+        take(); selectAll();
+      } else if (!mod && (e.key === "Backspace" || e.key === "Delete") && selected.size) {
+        take();
+        const list = [...selected];
+        selected = new Set();
+        removeItems(list);
+        draw();
+      } else if (!mod && e.key === "Escape" && selected.size) {
+        take();
+        selected = new Set();
+        draw();
       }
     }, true);
 
     window.addEventListener("resize", resize);
     window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", draw);
     // a last save when the tab closes or reloads
-    window.addEventListener("pagehide", () => { if (saveTimer) { clearTimeout(saveTimer); writeNow(); } });
+    window.addEventListener("pagehide", () => {
+      finishEdit();
+      if (saveTimer) { clearTimeout(saveTimer); writeNow(); }
+    });
 
     setTool("pen");
-    select("colors", "data-color", color);
-    select("sizes", "data-size", size);
+    press("colors", "data-color", color);
+    press("sizes", "data-size", size);
     updateButtons();
     resize();
     load();
@@ -345,13 +591,13 @@
   const CSS = `
 :root {
   --paper: #fbfaf8; --ink: #1d1c1a; --bar: rgba(255,255,255,.92); --bar-line: rgba(0,0,0,.09);
-  --muted: #6f6c66; --hover: rgba(0,0,0,.06); --on: rgba(0,0,0,.1);
+  --muted: #6f6c66; --hover: rgba(0,0,0,.06); --on: rgba(0,0,0,.1); --select: #0084e8;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #1b1b1d; --ink: #eceae6; --bar: rgba(44,44,48,.92); --bar-line: rgba(255,255,255,.1);
-    --muted: #a3a09a; --hover: rgba(255,255,255,.08); --on: rgba(255,255,255,.14);
+    --muted: #a3a09a; --hover: rgba(255,255,255,.08); --on: rgba(255,255,255,.14); --select: #4aa8ff;
     color-scheme: dark;
   }
 }
@@ -361,6 +607,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--paper)
   font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
 #ink { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 :root[data-tool="eraser"] #ink { cursor: cell; }
+:root[data-tool="select"] #ink { cursor: default; }
+:root[data-tool="text"] #ink { cursor: text; }
+#editor { position: fixed; margin: 0; padding: 0; border: 0; background: transparent; resize: none; overflow: hidden;
+  white-space: pre; outline: 1px dashed var(--select); outline-offset: 4px; border-radius: 0; z-index: 1;
+  caret-color: var(--select); }
 #name { position: fixed; top: 14px; left: 16px; width: min(360px, calc(100% - 32px)); padding: 6px 8px;
   border: 0; border-radius: 8px; background: transparent; color: var(--ink);
   font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1.2; outline: none; }
@@ -389,6 +640,8 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
 
   const svg = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const ICONS = {
+    select: svg('<path d="M6 4l12 7.5-5.2 1.3L10 18z"/>'),
+    text: svg('<path d="M6 7V5h12v2"/><path d="M12 5v14"/><path d="M9.5 19h5"/>'),
     pen: svg('<path d="M4 20l1-4L16 5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14 7l3 3"/>'),
     eraser: svg('<path d="M8 20h12"/><path d="M5.5 15.5l9-9a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8L11 18H7.5z"/><path d="M10 11l4 4"/>'),
     undo: svg('<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
@@ -422,7 +675,9 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
 <input id="name" type="text" placeholder="Untitled Easel" aria-label="Easel name" spellcheck="false" autocomplete="off">
 <div id="bar" role="toolbar" aria-label="Drawing tools">
   <div class="group" id="tools">
+    <button data-tool="select" title="Select: drag a box, or click; then drag to move, Delete to remove" aria-label="Select">${ICONS.select}</button>
     <button data-tool="pen" title="Pen" aria-label="Pen">${ICONS.pen}</button>
+    <button data-tool="text" title="Text: click to type" aria-label="Text">${ICONS.text}</button>
     <button data-tool="eraser" title="Eraser" aria-label="Eraser">${ICONS.eraser}</button>
   </div>
   <div class="sep"></div>
@@ -436,6 +691,7 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
     <button id="clear" title="Clear (Cmd+Z brings it back)" aria-label="Clear">${ICONS.clear}</button>
   </div>
 </div>
+<textarea id="editor" hidden wrap="off" spellcheck="false" aria-label="Text"></textarea>
 <div id="broken" hidden>This easel's address is broken, so there's nothing to show.</div>
 <script src="easel.js?${hash(js)}"></script>
 </body>
