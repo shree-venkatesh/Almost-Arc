@@ -4,7 +4,8 @@
 //                 and the distance from the center goes from near-black, through the
 //                 full color, to a light (pastel) version of the same hue at the edge.
 //                 Zen's own turns every hue white at the edge (or grey, for a dot from
-//                 a preset). Preset swatches still give their exact color. Saved themes
+//                 a preset). Preset swatches still give their exact color, with their
+//                 dots placed where Arc's map has that color. Saved themes
 //                 keep their colors (Zen saves the color, not the dot's position). The
 //                 wheel itself is left as Zen draws it (a painted one looked bad).
 //                 Pref: almost-arc.arc-color-wheel (default true)
@@ -49,6 +50,16 @@
     return { hue, t: Math.min(Math.hypot(dx, dy) / (w / 2), 1) };
   }
 
+  // Where on Arc's map a color sits: along the given angle, at the distance whose
+  // lightness matches the color's (the edge for anything lighter than the edge).
+  const lightnessOf = ([r, g, b]) => (Math.max(r, g, b) + Math.min(r, g, b)) / 2 / 255 * 100;
+  function arcSpot(hue, rgb, w, h) {
+    const l = Math.min(Math.max((lightnessOf(rgb) - L_CENTER) / (L_EDGE - L_CENTER), 0), 1);
+    const t = l ** (1 / CURVE), a = hue * Math.PI / 180;
+    return { x: w / 2 + t * (w / 2) * Math.cos(a), y: h / 2 + t * (w / 2) * Math.sin(a) };
+  }
+  const near = (a, b) => a.reduce((sum, v, i) => sum + Math.abs(v - b[i]), 0) <= 24;
+
   const wheelOf = picker => picker?.panel?.querySelector?.(".zen-theme-picker-gradient");
   const sizeOf = el => {
     const r = window.windowUtils.getBoundsWithoutFlushing(el);
@@ -64,6 +75,11 @@
     setTimeout(() => { applyingPreset = false; }, 0);
   }, true);
 
+  // A preset's dots, moved to Arc's spot for their color: the position they'll get -> the
+  // position Zen chose (whose color the preset keeps). Only while Zen applies the preset.
+  const presetSpots = new Map();
+  const spotKey = (x, y) => `${x}|${y}`;
+
   function install(picker) {
     if (!picker || picker.__arcColorWheel) return;
     const zens = picker.getColorFromPosition;
@@ -71,7 +87,7 @@
     picker.__arcColorWheel = true;
     picker.getColorFromPosition = function (x, y, type) {
       // Zen's own first: it also keeps its internal lightness up to date
-      const zen = zens.call(this, x, y, type);
+      const zen = zens.call(this, ...(presetSpots.get(spotKey(x, y)) || [x, y]), type);
       if (applyingPreset) return zen;
       try {
         const el = wheelOf(this);
@@ -83,6 +99,49 @@
         return zen;
       }
     };
+
+    // A preset keeps its exact colors, but its dots go where Arc's map has those colors,
+    // so moving a dot afterwards doesn't jump to another color (owner, 2026-11-19).
+    const zenPlace = picker.handleColorPositions;
+    if (typeof zenPlace === "function") {
+      picker.handleColorPositions = function (positions, ...rest) {
+        if (!applyingPreset || !Array.isArray(positions)) return zenPlace.call(this, positions, ...rest);
+        let moved = positions;
+        try {
+          const el = wheelOf(this);
+          const { w, h } = el ? sizeOf(el) : {};
+          if (w && h) {
+            moved = positions.map(d => {
+              if (!d?.position) return d;
+              const { x, y } = d.position;
+              const spot = arcSpot(polar(x, y, w, h).hue, zens.call(this, x, y, d.type), w, h);
+              presetSpots.set(spotKey(spot.x, spot.y), [x, y]);
+              return { ...d, position: spot };
+            });
+          }
+        } catch (e) { moved = positions; presetSpots.clear(); }
+        try { return zenPlace.call(this, moved, ...rest); } finally { presetSpots.clear(); }
+      };
+    }
+
+    // A space's saved dots, drawn again when the picker opens: one whose saved spot has
+    // another color on Arc's map (a preset picked before this fix) goes to its color's spot.
+    const zenDot = picker.createDot;
+    if (typeof zenDot === "function") {
+      picker.createDot = function (color, ...rest) {
+        try {
+          const c = color?.c, pos = color?.position;
+          if (!color.isCustom && Array.isArray(c) && pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+            const el = wheelOf(this);
+            let { w, h } = el ? sizeOf(el) : {};
+            if (!w || !h) w = h = 364;           // not laid out yet: Zen's own size for it
+            const { hue, t } = polar(pos.x, pos.y, w, h);
+            if (!near(arcColor(hue, t), c)) color = { ...color, position: arcSpot(hue, c, w, h) };
+          }
+        } catch (e) {}
+        return zenDot.call(this, color, ...rest);
+      };
+    }
   }
 
   window.addEventListener("popupshowing", e => {

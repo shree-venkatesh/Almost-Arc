@@ -90,7 +90,7 @@ function startZen(opts = {}) {
     addTab(url, params) { const tab = { url, params }; opened.push(tab); return tab; },
     selectedTab: null,
     selectedBrowser: { currentURI: { spec: o.selected || "https://example.com/" } },
-    tabContainer: { addEventListener: (t, fn) => (tabListeners[t] = fn) },
+    tabContainer: { addEventListener: (t, fn) => (tabListeners[t] ||= []).push(fn) },
     addTabsProgressListener: l => progress.push(l),
   };
   const context = {
@@ -99,6 +99,8 @@ function startZen(opts = {}) {
     crypto: { getRandomValues: a => { for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) & 255; return a; } },
     Uint8Array, Array, Object, String, Number, Error, Promise, Math, Date, JSON,
   };
+  const rootListeners = {};
+  context.windowRoot = { addEventListener: (t, fn) => (rootListeners[t] ||= []).push(fn) };
   context.window = context;
   context.addEventListener = (t, fn) => (winListeners[t] ||= []).push(fn);
   vm.createContext(context);
@@ -107,7 +109,13 @@ function startZen(opts = {}) {
     files: o.files, writes, reg, opened, gBrowser, menus,
     get toolbarHidden() { return rootAttrs.has("almost-arc-easel"); },
     /** You switch to a tab showing this address. */
-    selectTab(spec) { gBrowser.selectedBrowser = { currentURI: { spec } }; tabListeners.TabSelect?.(); },
+    selectTab(spec, contentDocument = null) {
+      gBrowser.selectedBrowser = { currentURI: { spec }, contentDocument };
+      (tabListeners.TabSelect || []).forEach(fn => fn());
+    },
+    /** A click (pointerdown) somewhere: Zen's window or a page in Zen's process. */
+    click(target) { (rootListeners.pointerdown || []).forEach(fn => fn({ target })); },
+    loaded(doc) { (rootListeners.DOMContentLoaded || []).forEach(fn => fn({ target: doc })); },
     /** The selected tab goes to another address. */
     navigate(spec) { gBrowser.selectedBrowser.currentURI = { spec }; progress.forEach(l => l.onLocationChange(gBrowser.selectedBrowser)); },
     item: id => Object.values(menus).flatMap(m => m.kids).find(k => k.id === id),
@@ -239,9 +247,55 @@ describe("easel: Zen's toolbar", () => {
     assert.equal(z.toolbarHidden, false);
   });
 
+  test("Zen's toolbar still hides with an easel selected (two TabSelect listeners)", () => {
+    const z = startZen();
+    z.selectTab(EASEL, easelDoc());
+    assert.equal(z.toolbarHidden, true);
+  });
+
   test("chrome.css hides the top toolbar for it (Arc layout only)", () => {
     const css = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "chrome.css"), "utf8");
     assert.match(css, /:root\[almost-arc-easel\]:not\(\[zen-single-toolbar="true"\]\)[^{]*#zen-appcontent-navbar-wrapper\s*\{\s*display: none !important;/);
+  });
+});
+
+// Owner, 2026-11-19: with an easel selected, a click in the sidebar should give Cmd+Z back to Zen
+const easelDoc = () => ({ documentURI: `${PREFIX}easel.html#abcdef0123456789`, documentElement: { dataset: {} } });
+describe("easel: whose keys", () => {
+  const EASEL = `${PREFIX}easel.html#abcdef0123456789`;
+  test("a click in the easel: its keys; a click in the sidebar: Zen's", () => {
+    const z = startZen();
+    const doc = easelDoc();
+    z.selectTab(EASEL, doc);
+    z.click({ ownerDocument: doc });                 // the canvas
+    assert.equal(doc.documentElement.dataset.keys, "easel");
+    z.click({ ownerDocument: { documentURI: "chrome://browser/content/browser.xhtml" } });   // the sidebar
+    assert.equal(doc.documentElement.dataset.keys, "browser");
+    z.click({ ownerDocument: doc });
+    assert.equal(doc.documentElement.dataset.keys, "easel");
+  });
+
+  test("switching to an easel tab (a click in the sidebar, or the keyboard): Zen's until you click the easel", () => {
+    const z = startZen();
+    const doc = easelDoc();
+    doc.documentElement.dataset.keys = "easel";      // from the last time you were on it
+    z.selectTab(EASEL, doc);
+    assert.equal(doc.documentElement.dataset.keys, "browser");
+  });
+
+  test("an easel tab that loads after you selected it starts with Zen's keys", () => {
+    const z = startZen();
+    const doc = easelDoc();
+    z.selectTab(EASEL, doc);
+    delete doc.documentElement.dataset.keys;
+    z.loaded(doc);
+    assert.equal(doc.documentElement.dataset.keys, "browser");
+  });
+
+  test("clicks elsewhere with a web page selected touch nothing", () => {
+    const z = startZen();
+    z.selectTab("https://example.com/", { documentURI: "https://example.com/", documentElement: { dataset: {} } });
+    assert.doesNotThrow(() => z.click({ ownerDocument: { documentURI: "chrome://browser/content/browser.xhtml" } }));
   });
 });
 
@@ -439,6 +493,19 @@ describe("easel page: undo, eraser, clear", () => {
     assert.deepEqual(firsts(await p.saved()), [[1, 1]]);
     p.key("z", { shift: true });
     assert.deepEqual(firsts(await p.saved()), [[1, 1], [20, 20]]);
+  });
+
+  test("after a click outside the easel (data-keys=browser), its keys are Zen's", async () => {
+    const p = await openPage();
+    p.stroke([1, 1], [9, 9]);
+    p.document.documentElement.dataset.keys = "browser";
+    for (const [k, mod] of [["z", true], ["a", true], ["Backspace", false]]) {
+      assert.equal(p.key(k, { mod }).taken, false, k);
+    }
+    assert.equal((await p.saved()).items.length, 1);
+    p.document.documentElement.dataset.keys = "easel";
+    p.key("z");
+    assert.equal((await p.saved()).items.length, 0);
   });
 
   test("Cmd+Z while typing the name is left to the text box", async () => {
@@ -763,5 +830,36 @@ describe("easel page: shapes", () => {
       { k: "star", c: "ink", w: 5, x0: 1, y0: 1, x1: 2, y1: 2 }, box.items[0]] } });
     p.stroke([9, 9]);
     assert.deepEqual(firsts(await p.saved()), ["rect", [9, 9]]);
+  });
+});
+
+describe("easel page: size buttons", () => {
+  // Owner, 2026-11-19: with text, the sizes show "A"s, not dots
+  const sizes = p => p.render() && p.document.documentElement.dataset.sizes;
+  test("dots for lines and shapes, A's for the text tool, a text box being typed, or selected text", async () => {
+    const p = await openPage({ saved: { v: 2, name: "", items: [{ c: "ink", w: 5, p: [[0, 0], [50, 0]] },
+      { k: "text", c: "ink", f: 24, x: 100, y: 100, v: "hello" }] } });
+    assert.equal(sizes(p), "line");
+    p.tool("text");
+    assert.equal(sizes(p), "text");
+    p.tool("select");
+    p.stroke([110, 110]);                  // the text
+    assert.equal(sizes(p), "text");
+    p.key("a");                            // text and a line
+    assert.equal(sizes(p), "line");
+    p.dblclick([110, 110]);
+    assert.equal(sizes(p), "text");
+    p.editorKey("Escape");
+    p.tool("rect");
+    assert.equal(sizes(p), "line");
+  });
+
+  test("each size button has a dot and an A; the page CSS shows one", async () => {
+    const z = startZen();
+    await settle(); await settle();
+    const html = z.files.get(`${PAGE_DIR}/easel.html`), css = z.files.get(`${PAGE_DIR}/easel.css`);
+    assert.equal((html.match(/<span class="a" style="font-size:\d+px">A<\/span>/g) || []).length, 3);
+    assert.match(css, /:root\[data-sizes="text"\] \[data-size\] \.dot \{ display: none; \}/);
+    assert.match(css, /:root\[data-sizes="text"\] \[data-size\] \.a \{ display: block; \}/);
   });
 });

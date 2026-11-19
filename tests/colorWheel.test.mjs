@@ -22,6 +22,7 @@ const PANEL_ID = "PanelUI-zen-gradient-generator";
  *   prefs     user pref values
  *   size      the wheel's width and height in CSS px (default 300)
  *   noPicker  true: Zen has no getColorFromPosition (Zen changed)
+ *   zen       Zen's own mapping, (x, y) -> rgb (default: white everywhere)
  */
 function load(opts = {}) {
   const o = { prefs: {}, size: 300, ...opts };
@@ -41,7 +42,14 @@ function load(opts = {}) {
   // Zen's own mapping, simplified: white at the edge whatever the hue
   const ZEN_WHITE = [255, 255, 255];
   const picker = { panel };
-  if (!o.noPicker) picker.getColorFromPosition = function (x, y, type) { zenCalls.push([x, y, type]); return ZEN_WHITE; };
+  if (!o.noPicker) picker.getColorFromPosition = function (x, y, type) { zenCalls.push([x, y, type]); return o.zen ? o.zen(x, y) : ZEN_WHITE; };
+  // Zen places dots and gives each the color at its spot (handleColorPositions), or
+  // draws a space's saved dots (createDot)
+  const placed = [], created = [];
+  picker.handleColorPositions = function (positions) {
+    for (const d of positions) placed.push({ ...d.position, color: [...this.getColorFromPosition(d.position.x, d.position.y, d.type)] });
+  };
+  picker.createDot = function (color) { created.push(color); };
 
   const listeners = {};
   const timers = [];
@@ -62,7 +70,7 @@ function load(opts = {}) {
 
   const fire = (type, ev) => (listeners[type] || []).forEach(fn => fn(ev));
   return {
-    picker, wheel, style, zenCalls, ZEN_WHITE,
+    picker, wheel, style, zenCalls, ZEN_WHITE, placed, created,
     openPicker() { fire("popupshowing", { target: panel }); fire("popupshown", { target: panel }); },
     /** You click a preset swatch: Zen applies it while the click runs. */
     clickPreset(apply) {
@@ -132,6 +140,71 @@ describe("Arc's color map", () => {
     z.openPicker();
     assert.deepEqual(z.clickPreset(() => z.colorAt(300, 150)), z.ZEN_WHITE);
     assert.notDeepEqual(z.colorAt(300, 150), z.ZEN_WHITE);
+  });
+});
+
+describe("preset colors on Arc's map", () => {
+  // a preset color, whatever spot Zen picks for it; lightness ~51%
+  const PRESET = [200, 60, 60];
+  const lightness = ([r, g, b]) => (Math.max(r, g, b) + Math.min(r, g, b)) / 2 / 255 * 100;
+
+  // Owner, 2026-11-19: pick a preset, then move its dot: it jumped to another color
+  test("a preset keeps its exact colors, but its dots go where Arc's map has them", () => {
+    const z = load({ zen: () => PRESET });
+    z.openPicker();
+    // Zen's spots: 40 px right of the center (angle 0) and 40 px below it (angle 90)
+    z.clickPreset(() => z.picker.handleColorPositions([{ ID: 0, position: { x: 190, y: 150 } }, { ID: 1, position: { x: 150, y: 190 } }]));
+    assert.equal(z.placed.length, 2);
+    for (const p of z.placed) assert.deepEqual(p.color, PRESET, "the preset's color, not the map's");
+    const [a, b] = z.placed;
+    assert.ok(Math.abs(a.y - 150) < 0.01 && a.x > 250 && a.x < 285, `same angle, further out: ${a.x}, ${a.y}`);
+    assert.ok(Math.abs(b.x - 150) < 0.01 && b.y > 250 && b.y < 285, `${b.x}, ${b.y}`);
+    // moving the dot now: the map gives the same lightness there, no jump
+    const moved = z.colorAt(a.x, a.y);
+    assert.ok(Math.abs(lightness(moved) - lightness(PRESET)) < 2, `${moved} vs ${PRESET}`);
+    assert.ok(moved[0] > moved[1] + 100, "still red");
+  });
+
+  test("a very light preset color goes to the edge, a black one to the center", () => {
+    const z = load({ zen: (x, y) => (y < 150 ? [250, 245, 240] : [0, 0, 0]) });
+    z.openPicker();
+    z.clickPreset(() => z.picker.handleColorPositions([{ ID: 0, position: { x: 150, y: 100 } }, { ID: 1, position: { x: 150, y: 200 } }]));
+    assert.ok(Math.abs(z.placed[0].y - 0) < 0.01, `edge: ${z.placed[0].y}`);
+    assert.ok(Math.abs(z.placed[1].y - 150) < 0.01, `center: ${z.placed[1].y}`);
+  });
+
+  test("dots you move yourself are placed where you put them", () => {
+    const z = load({ zen: () => PRESET });
+    z.openPicker();
+    z.picker.handleColorPositions([{ ID: 0, position: { x: 190, y: 150 } }]);
+    assert.deepEqual([z.placed[0].x, z.placed[0].y], [190, 150]);
+    assert.notDeepEqual(z.placed[0].color, PRESET, "the map's color");
+  });
+
+  test("a saved dot whose spot has another color (a preset from before) is drawn at its color's spot", () => {
+    const z = load({ zen: () => PRESET });
+    z.openPicker();
+    z.picker.createDot({ c: PRESET, position: { x: 190, y: 150 }, isPrimary: true }, true);
+    const d = z.created[0];
+    assert.ok(d.position.x > 250 && Math.abs(d.position.y - 150) < 0.01, JSON.stringify(d.position));
+    assert.deepEqual(d.c, PRESET);
+    assert.equal(d.isPrimary, true);
+  });
+
+  test("a saved dot made on Arc's map stays exactly where it was", () => {
+    const z = load();
+    z.openPicker();
+    const c = z.colorAt(230, 120);
+    z.picker.createDot({ c, position: { x: 230, y: 120 } }, true);
+    assert.deepEqual(z.created[0].position, { x: 230, y: 120 });
+  });
+
+  test("custom colors (no spot on the wheel) are left alone", () => {
+    const z = load();
+    z.openPicker();
+    const color = { c: "#123456", isCustom: true };
+    z.picker.createDot(color, true);
+    assert.equal(z.created[0], color);
   });
 });
 

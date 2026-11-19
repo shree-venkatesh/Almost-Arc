@@ -253,6 +253,9 @@
     }
     let frame = 0;
     function draw() {
+      // the size buttons show text sizes (A) for the text tool, a text box or selected text
+      const textSizes = tool === "text" || !!editing || (selected.size > 0 && [...selected].every(isText));
+      document.documentElement.dataset.sizes = textSizes ? "text" : "line";
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
@@ -621,6 +624,8 @@
     const isMac = /Mac/.test(navigator.platform);
     document.addEventListener("keydown", e => {
       if (e.target === nameEl || e.target === editor) return;   // typing: its own undo, select all, delete
+      // you last clicked outside the easel (the sidebar…): keys are Zen's (arcEasel.uc.js sets this)
+      if (document.documentElement.dataset.keys === "browser") return;
       const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
       const key = e.key?.toLowerCase();
       const take = () => { e.preventDefault(); e.stopPropagation(); };
@@ -707,6 +712,9 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
 .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
 [data-color="ink"] .dot { background: var(--ink); }
 [data-size] .dot { background: var(--ink); box-shadow: none; }
+[data-size] .a { display: none; font-weight: 600; line-height: 1; color: var(--ink); }
+:root[data-sizes="text"] [data-size] .dot { display: none; }
+:root[data-sizes="text"] [data-size] .a { display: block; }
 #broken { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
 `;
 
@@ -726,6 +734,7 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
   const COLOR_NAMES = { ink: "Ink", "#e5484d": "Red", "#f76b15": "Orange", "#ffc53d": "Yellow",
     "#30a46c": "Green", "#0090ff": "Blue", "#8e4ec6": "Purple" };
   const SIZE_NAMES = { 2: "Thin", 5: "Medium", 10: "Thick" };
+  const TEXT_BUTTON_PX = { 2: 11, 5: 14, 10: 18 };   // the "A" on each size button for text
 
   // tiny hash so a changed file gets a new URL (no stale cached copy after an update)
   const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36); };
@@ -735,7 +744,7 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
     const colors = Object.entries(COLOR_NAMES).map(([c, n]) =>
       `<button data-color="${c}" title="${n}" aria-label="${n}"><span class="dot" style="--c:${c === "ink" ? "var(--ink)" : c}"></span></button>`).join("");
     const sizes = Object.entries(SIZE_NAMES).map(([s, n]) =>
-      `<button data-size="${s}" title="${n}" aria-label="${n}"><span class="dot" style="width:${Number(s) + 3}px;height:${Number(s) + 3}px"></span></button>`).join("");
+      `<button data-size="${s}" title="${n}" aria-label="${n}"><span class="dot" style="width:${Number(s) + 3}px;height:${Number(s) + 3}px"></span><span class="a" style="font-size:${TEXT_BUTTON_PX[s]}px">A</span></button>`).join("");
     const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -870,6 +879,29 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
   window.addEventListener("popupshowing", e => {
     if (e.target?.id === PLUS_POPUP) try { addToPlus(); } catch (err) { console.warn("[arcEasel]", err); }
   }, true);
+  // Keys in an easel tab: after a click in the easel, its own (Cmd+Z undoes the drawing);
+  // after a click anywhere else in Zen (the sidebar…), Zen's (Cmd+Z undoes tab changes,
+  // arcTabUndo.uc.js), even though the easel page keeps the keyboard focus (owner, 2026-11-19).
+  // The page reads <html data-keys="easel|browser">; switching to an easel tab starts as Zen's.
+  const easelDocOf = t => { const d = t?.ownerDocument || t; return isEasel(d?.documentURI) ? d : null; };
+  function keysTo(doc, who) { try { if (doc?.documentElement) doc.documentElement.dataset.keys = who; } catch (e) {} }
+  function selectedEaselDoc() {
+    try { const d = gBrowser.selectedBrowser?.contentDocument; return isEasel(d?.documentURI) ? d : null; } catch (e) { return null; }
+  }
+  try {
+    const root = window.windowRoot;   // sees events in Zen's window and in easel pages (in-process)
+    root.addEventListener("pointerdown", e => {
+      const d = easelDocOf(e.target);
+      if (d) keysTo(d, "easel");
+      else keysTo(selectedEaselDoc(), "browser");
+    }, true);
+    root.addEventListener("DOMContentLoaded", e => {
+      const d = easelDocOf(e.target);
+      if (d && d === selectedEaselDoc()) keysTo(d, "browser");
+    }, true);
+    gBrowser.tabContainer.addEventListener("TabSelect", () => keysTo(selectedEaselDoc(), "browser"));
+  } catch (e) { console.warn("[arcEasel]", e); }
+
   // Zen's top toolbar hides while an easel tab is selected (chrome.css, :root[almost-arc-easel])
   function syncToolbar() {
     document.documentElement.toggleAttribute("almost-arc-easel", isEasel(gBrowser.selectedBrowser?.currentURI?.spec));

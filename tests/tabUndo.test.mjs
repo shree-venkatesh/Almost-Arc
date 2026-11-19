@@ -104,11 +104,13 @@ async function load(opts = {}) {
   };
 
   // ---- window, keyboard focus, files ----
-  const winListeners = {};
+  const winListeners = {}, rootListeners = {};
   const focus = { ime: false, element: null };
   const window = {
     closed: false,
     addEventListener: (type, fn) => (winListeners[type] ||= []).push(fn),
+    // windowRoot: above Zen's window; the only place keys in an easel page (in Zen's process) pass
+    windowRoot: { addEventListener: (type, fn) => (rootListeners[type] ||= []).push(fn) },
     windowUtils: { get IMEStatus() { return focus.ime ? 1 : 0; } },
     isBlankPageURL: u => u === "about:blank" || u === "about:newtab",
   };
@@ -223,8 +225,11 @@ async function load(opts = {}) {
     /** Press Cmd+Z; resolves when the undo is done. Returns whether Cmd+Z was taken. */
     async cmdZ(target = null) {
       let taken = false;
-      fire(winListeners, "keydown", { key: "z", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false, target,
-        preventDefault() { taken = true; }, stopPropagation() {} });
+      const e = { key: "z", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false, target,
+        preventDefault() { taken = true; }, stopPropagation() {} };
+      fire(rootListeners, "keydown", e);
+      const inEasel = String(target?.ownerDocument?.documentURI || "").startsWith("chrome://almostarc-easel/");
+      if (!inEasel) fire(winListeners, "keydown", e);   // an easel page's keys don't pass Zen's window
       await flush();
       await tick(600);
       return taken;
@@ -341,13 +346,32 @@ describe("tab undo: what gets recorded", () => {
     assert.equal(z.open.length, 4);
   });
 
-  test("Cmd+Z in an easel tab is the easel's (its drawing), not a tab undo", async () => {
+  const easelPage = keys => ({ ownerDocument: { documentURI: "chrome://almostarc-easel/content/easel.html#abcdef0123456789",
+    documentElement: { dataset: keys ? { keys } : {} } } });
+
+  test("Cmd+Z in an easel tab you last clicked in is the easel's (its drawing), not a tab undo", async () => {
     const z = await load({ tabs: 5 });
     await z.userCloses(z.open[0]);
-    const inEasel = { ownerDocument: { documentURI: "chrome://almostarc-easel/content/easel.html#abcdef0123456789" } };
-    assert.equal(await z.cmdZ(inEasel), false);
+    assert.equal(await z.cmdZ(easelPage("easel")), false);
+    assert.equal(await z.cmdZ(easelPage()), false);
     assert.equal(z.open.length, 4);
     assert.ok(await z.cmdZ());               // elsewhere it still undoes the close
+  });
+
+  // Owner, 2026-11-19: with an easel selected, Cmd+Z did nothing for tabs, even after a click in the sidebar
+  test("easel selected, last click in the sidebar: Cmd+Z undoes tab changes", async () => {
+    const z = await load({ tabs: 5 });
+    await z.userCloses(z.open[0]);
+    assert.ok(await z.cmdZ(easelPage("browser")));
+    assert.equal(z.open.length, 5);
+  });
+
+  test("Cmd+Z in Zen's own window isn't undone twice (window and windowRoot both see it)", async () => {
+    const z = await load({ tabs: 5 });
+    await z.userCloses(z.open[0]);
+    await z.userCloses(z.open[0]);
+    await z.cmdZ();
+    assert.equal(z.open.length, 4);
   });
 
   test("a tab closed without your input (by a site or Zen) isn't recorded", async () => {

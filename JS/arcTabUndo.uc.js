@@ -299,12 +299,23 @@
 
   // ---- Cmd+Z --------------------------------------------------------------
   const isMac = AppConstants.platform === "macosx";
-  window.addEventListener("keydown", e => {
+  // An easel tab (arcEasel.uc.js) is a page in Zen's own process: its keys skip Zen's
+  // window and only pass windowRoot. They're Zen's only when you last clicked outside the
+  // easel (the page then has data-keys="browser"); otherwise Cmd+Z undoes the drawing.
+  const easelDoc = e => {
+    const doc = e.target?.ownerDocument || e.target;
+    return String(doc?.documentURI || "").startsWith("chrome://almostarc-easel/") ? doc : null;
+  };
+  window.addEventListener("keydown", e => { if (!easelDoc(e)) onCmdZ(e); }, true);
+  try {
+    window.windowRoot.addEventListener("keydown", e => {
+      const doc = easelDoc(e);
+      if (doc && doc.documentElement?.dataset?.keys === "browser") onCmdZ(e);
+    }, true);
+  } catch (e) {}
+  function onCmdZ(e) {
     if (e.key?.toLowerCase() !== "z" || e.shiftKey || e.altKey) return;
     if (isMac ? (!e.metaKey || e.ctrlKey) : (!e.ctrlKey || e.metaKey)) return;
-    // An easel tab (arcEasel.uc.js) has its own Cmd+Z for the drawing.
-    const doc = e.target?.ownerDocument || e.target;
-    if (String(doc?.documentURI || "").startsWith("chrome://almostarc-easel/")) return;
     // Typing somewhere (web page text field, address bar, rename box…)? Then
     // Cmd+Z belongs to that text. The OS-level input state is accurate for both
     // web pages and Zen's own UI (unlike Firefox's undo-command state).
@@ -319,5 +330,5 @@
     e.preventDefault();
     e.stopPropagation();
     undo();
-  }, true);
+  }
 })();
