@@ -351,6 +351,8 @@ check("PiP: Back to Tab closes it; switching tabs or minimizing Zen pops a video
   await sleep(1000);
   // and so does minimizing Zen (on Linux Firefox doesn't hear of a window covering Zen, only of minimizing it)
   window.minimize();
+  // the window manager has to minimize it for real (Firefox hears of it as a size-mode change)
+  await until(() => window.windowState === window.STATE_MINIMIZED, "Zen to be minimized (window state " + window.windowState + ")", 4000);
   await until(() => pipWin(), "a PiP after minimizing Zen", 6000);
   window.restore();
   await pipClosed();   // closed again when Zen comes back
