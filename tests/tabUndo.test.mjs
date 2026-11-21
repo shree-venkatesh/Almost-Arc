@@ -141,7 +141,7 @@ async function load(opts = {}) {
   const context = {
     window, Services, gBrowser, IOUtils,
     console: { warn: (...a) => warnings.push(a.join(" ")), log() {} },
-    AppConstants: { platform: "macosx" },
+    AppConstants: { platform: o.platform ?? "macosx" },
     Ci: { nsIDOMWindowUtils: { IME_STATUS_DISABLED: 0 } },
     document: { commandDispatcher: { get focusedElement() { return focus.element; } } },
     PathUtils: { profileDir: "/profile", join: (...p) => p.join("/") },
@@ -223,9 +223,9 @@ async function load(opts = {}) {
     /** A click somewhere else in Zen (not the picker). */
     clickOutside() { fire(winListeners, "mouseup", { isTrusted: true, type: "mouseup", target: outside }); },
     /** Press Cmd+Z; resolves when the undo is done. Returns whether Cmd+Z was taken. */
-    async cmdZ(target = null) {
+    async cmdZ(target = null, { meta = (o.platform ?? "macosx") === "macosx", ctrl = !meta } = {}) {
       let taken = false;
-      const e = { key: "z", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false, target,
+      const e = { key: "z", metaKey: meta, ctrlKey: ctrl, shiftKey: false, altKey: false, target,
         preventDefault() { taken = true; }, stopPropagation() {} };
       fire(rootListeners, "keydown", e);
       const inEasel = String(target?.ownerDocument?.documentURI || "").startsWith("chrome://almostarc-easel/");
@@ -236,6 +236,24 @@ async function load(opts = {}) {
     },
   };
 }
+
+describe("tab undo: Linux", () => {
+  test("Ctrl+Z undoes a close; Super+Z and Cmd-style keys don't", async () => {
+    const z = await load({ tabs: 5, platform: "linux" });
+    await z.userCloses(z.open[0]);
+    assert.equal(await z.cmdZ(null, { meta: true, ctrl: false }), false, "Super+Z isn't undo on Linux");
+    assert.equal(await z.cmdZ(null, { meta: true, ctrl: true }), false);
+    assert.ok(await z.cmdZ(null, { meta: false, ctrl: true }));
+    assert.equal(z.open.length, 5);
+  });
+
+  test("on macOS Ctrl+Z isn't undo (Cmd+Z is)", async () => {
+    const z = await load({ tabs: 5 });
+    await z.userCloses(z.open[0]);
+    assert.equal(await z.cmdZ(null, { meta: false, ctrl: true }), false);
+    assert.ok(await z.cmdZ());
+  });
+});
 
 describe("tab undo: reopening closed tabs", () => {
   test("Cmd+Z reopens a tab you closed, where it was", async () => {
@@ -346,8 +364,8 @@ describe("tab undo: what gets recorded", () => {
     assert.equal(z.open.length, 4);
   });
 
-  const easelPage = keys => ({ ownerDocument: { documentURI: "chrome://almostarc-easel/content/easel.html#abcdef0123456789",
-    documentElement: { dataset: keys ? { keys } : {} } } });
+  const easelPage = (keys, activeElement = { localName: "body" }) => ({ ownerDocument: { documentURI: "chrome://almostarc-easel/content/easel.html#abcdef0123456789",
+    documentElement: { dataset: keys ? { keys } : {} }, activeElement } });
 
   test("Cmd+Z in an easel tab you last clicked in is the easel's (its drawing), not a tab undo", async () => {
     const z = await load({ tabs: 5 });
@@ -363,6 +381,21 @@ describe("tab undo: what gets recorded", () => {
     const z = await load({ tabs: 5 });
     await z.userCloses(z.open[0]);
     assert.ok(await z.cmdZ(easelPage("browser")));
+    assert.equal(z.open.length, 5);
+  });
+
+  // Real Zen (1.24.3b, Linux): with an easel focused, the input state says "typing" even
+  // though nothing editable is focused, so Cmd+Z never undid tab changes there.
+  test("easel selected: the input state's 'typing' doesn't count, the page's focused element does", async () => {
+    const z = await load({ tabs: 5 });
+    await z.userCloses(z.open[0]);
+    await z.userCloses(z.open[0]);
+    z.focus.ime = true;
+    assert.ok(await z.cmdZ(easelPage("browser")));
+    assert.equal(z.open.length, 4);
+    assert.equal(await z.cmdZ(easelPage("browser", { localName: "input", id: "name" })), false, "renaming the easel");
+    assert.equal(await z.cmdZ(easelPage("browser", { localName: "textarea", id: "editor" })), false, "typing a text box");
+    assert.ok(await z.cmdZ(easelPage("browser", { localName: "textarea", id: "editor", hidden: true })), "a hidden text box isn't typing");
     assert.equal(z.open.length, 5);
   });
 

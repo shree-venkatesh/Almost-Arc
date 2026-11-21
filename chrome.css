@@ -124,6 +124,13 @@
   #zen-appcontent-navbar-wrapper:hover .titlebar-buttonbox-container {
     opacity: 1;
   }
+  /* Linux: Zen's own minimize / maximize / close always sit in the toolbar there, so
+     hiding them until hover hid them for good (tests/zen/smoke.mjs, Zen 1.24.3b) */
+  @media (-moz-platform: linux) {
+    #zen-appcontent-navbar-wrapper .titlebar-buttonbox-container {
+      opacity: 1;
+    }
+  }
 
   #zen-appcontent-navbar-container,
   #nav-bar {

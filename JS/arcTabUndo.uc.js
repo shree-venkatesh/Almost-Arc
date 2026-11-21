@@ -320,9 +320,16 @@
     // Cmd+Z belongs to that text. The OS-level input state is accurate for both
     // web pages and Zen's own UI (unlike Firefox's undo-command state).
     let typing = false;
-    try { typing = window.windowUtils.IMEStatus !== Ci.nsIDOMWindowUtils.IME_STATUS_DISABLED; } catch (err) {}
-    const fe = document.commandDispatcher.focusedElement;
-    if (fe && (fe.localName === "input" || fe.localName === "textarea" || fe.isContentEditable)) typing = true;
+    const field = el => !!el && !el.hidden && (el.localName === "input" || el.localName === "textarea" || el.isContentEditable);
+    const easel = easelDoc(e);
+    if (easel) {
+      // An easel page keeps the input state "enabled" even with nothing editable focused
+      // (seen in Zen 1.24.3b on Linux, tests/zen/smoke.mjs), so ask the page itself.
+      typing = field(easel.activeElement);
+    } else {
+      try { typing = window.windowUtils.IMEStatus !== Ci.nsIDOMWindowUtils.IME_STATUS_DISABLED; } catch (err) {}
+      if (field(document.commandDispatcher.focusedElement)) typing = true;
+    }
     if (typing) { log("Cmd+Z: left to the text field you're typing in"); return; }
 
     if (!history.length || undoing) { log(`Cmd+Z: nothing to undo (history=${history.length} undoing=${undoing})`); return; }

@@ -96,7 +96,17 @@ The script:
 - **writes the recommended settings** into `user.js` in a marked block that's easy to remove;
 - **gives Zen the Almost Arc icon** in the Dock and Finder (macOS). To keep Zen's icon, install with `ALMOST_ARC_ICON=0 ./install.sh`.
 
-For Linux, or a non-default profile or install location:
+**Linux:** use the `linux` branch (the stable release plus Linux fixes, tested in Zen for Linux):
+
+```bash
+git clone -b linux https://github.com/shree-venkatesh/Almost-Arc.git
+cd Almost-Arc
+./install.sh
+```
+
+It finds Zen through the `zen` command or the usual install folders (Zen's tarball install, `/opt`, distro packages). Zen from Flatpak can't load the script loader (its app folder is read-only): use Sine there.
+
+For a non-default profile or install location:
 
 ```bash
 ZEN_PROFILE=/path/to/profile ZEN_APP=/path/to/zen-install ./install.sh

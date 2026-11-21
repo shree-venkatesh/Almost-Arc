@@ -22,3 +22,21 @@ jobs:
         with:
           node-version: 22
       - run: node --test 'tests/*.test.mjs'
+
+  # The mod in a real Zen for Linux (latest release, under Xvfb with a window manager):
+  # install.sh as a user would run it, then tests/zen/smoke.mjs through Marionette.
+  zen-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y xvfb twm
+      - run: tests/zen/run-linux.sh "$RUNNER_TEMP/zen" -- --shots "$RUNNER_TEMP/shots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zen-linux-screenshots
+          path: ${{ runner.temp }}/shots

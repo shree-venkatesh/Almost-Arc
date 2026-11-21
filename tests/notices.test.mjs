@@ -63,7 +63,7 @@ async function run(opts = {}) {
       getIntPref: (k, d) => (prefs.has(k) ? prefs.get(k) : d),
       setIntPref: (k, v) => prefs.set(k, v),
     },
-    dirsvc: { get: () => ({ path: "/Users/me" }) },
+    dirsvc: { get: key => ({ path: key === "GreD" ? "/opt/zen" : "/Users/me" }) },
     appinfo: { invalidateCachesOnRestart: () => restarted.push("invalidateCaches") },
     startup: { quit: flags => restarted.push(`quit:${flags}`) },
     },
@@ -83,6 +83,7 @@ async function run(opts = {}) {
     },
     gBrowser: { getNotificationBox: () => null },
     Cc: {}, Ci: { nsIFile: {}, nsIAppStartup: { eAttemptQuit: 2, eRestart: 16 } }, openTrustedLinkIn: () => {},
+    AppConstants: { platform: o.platform ?? "macosx" },
     setTimeout: fn => timers.push(fn), clearTimeout: () => {},
     Math, Date, String, Number, JSON, Promise, parseInt,
   };
@@ -229,6 +230,23 @@ describe("Update button", () => {
     assert.deepEqual([...r.ran[0].arguments], ["update"]);
     assert.equal(r.ran[0].environment.ALMOST_ARC_FROM_ZEN, "1");
     assert.match(r.ran[0].environment.PATH, /\/opt\/homebrew\/bin/);
+  });
+
+  test("macOS: install.sh finds Zen itself (no ZEN_APP / ZEN_PROFILE passed)", async () => {
+    const r = await run(older);
+    await r.click("Update");
+    assert.equal(r.ran[0].environment.ZEN_APP, undefined);
+    assert.equal(r.ran[0].environment.ZEN_PROFILE, undefined);
+  });
+
+  // Linux: Zen's folder has no fixed place, and install.sh stopped with "Zen install folder
+  // not found" (tests/zen/run-linux.sh): Zen tells it its own folder and profile.
+  test("Linux: passes this Zen's folder and profile to the update", async () => {
+    const r = await run({ ...older, platform: "linux" });
+    await r.click("Update");
+    assert.equal(r.ran[0].environment.ZEN_APP, "/opt/zen");
+    assert.equal(r.ran[0].environment.ZEN_PROFILE, "/profile");
+    assert.equal(r.ran[0].environment.ALMOST_ARC_FROM_ZEN, "1");
   });
 
   test("shows progress, then offers Restart Zen", async () => {

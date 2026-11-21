@@ -143,6 +143,12 @@
           // install.sh: Zen is open on purpose, don't ask for a password (no Terminal to type it in)
           ALMOST_ARC_FROM_ZEN: "1",
           PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+          // Linux: Zen's folder isn't in one fixed place, so install.sh gets this Zen's and
+          // this profile (the one to update) rather than guessing
+          ...(AppConstants.platform === "linux" ? {
+            ZEN_APP: Services.dirsvc.get("GreD", Ci.nsIFile).path,
+            ZEN_PROFILE: PathUtils.profileDir,
+          } : {}),
         },
       });
       const killer = setTimeout(() => proc.kill(), 10 * 60 * 1000);

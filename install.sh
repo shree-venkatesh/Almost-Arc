@@ -10,7 +10,24 @@ case "$(uname)" in
   Darwin) ZEN_ROOT="$HOME/Library/Application Support/zen"
           ZEN_APP="${ZEN_APP:-/Applications/Zen.app/Contents/Resources}" ;;
   Linux)  ZEN_ROOT="$HOME/.zen"; [ -d "$ZEN_ROOT" ] || ZEN_ROOT="$HOME/.config/zen"
-          ZEN_APP="${ZEN_APP:-}" ;;
+          ZEN_APP="${ZEN_APP:-}"
+          # Zen's folder (the one with omni.ja): the `zen` command's, then the usual
+          # places for the official tarball (Zen's install script uses
+          # ~/.tarball-installations/zen) and distro packages.
+          if [ -z "$ZEN_APP" ]; then
+            for c in "$(command -v zen 2>/dev/null)" "$(command -v zen-browser 2>/dev/null)" "$HOME/.local/bin/zen" \
+                     "$HOME/.tarball-installations/zen/zen" /opt/zen/zen /opt/zen-browser/zen /opt/zen-browser-bin/zen \
+                     /usr/lib/zen-browser/zen /usr/lib/zen/zen /usr/lib64/zen-browser/zen; do
+              [ -n "$c" ] && [ -e "$c" ] || continue
+              d="$(dirname "$(readlink -f "$c")")"
+              if [ -f "$d/omni.ja" ]; then ZEN_APP="$d"; break; fi
+            done
+          fi
+          if [ -z "$ZEN_APP" ] && { [ -d /var/lib/flatpak/app/app.zen_browser.zen ] || [ -d "$HOME/.local/share/flatpak/app/app.zen_browser.zen" ]; }; then
+            echo "Zen from Flatpak can't load this script's loader (its app folder is read-only)."
+            echo "Install Almost Arc with Sine instead (Zen's mod manager), or use Zen's tarball from zen-browser.app."
+            exit 1
+          fi ;;
   *) echo "Unsupported OS. Set ZEN_PROFILE and ZEN_APP and rerun."; exit 1 ;;
 esac
 

@@ -357,7 +357,7 @@ async function openPage(opts = {}) {
   const window = { innerWidth: 800, innerHeight: 600, devicePixelRatio: 2, addEventListener() {},
     matchMedia: () => ({ addEventListener() {} }) };
   const context = {
-    window, document, IOUtils, location: { hash: o.hash }, navigator: { platform: "MacIntel" },
+    window, document, IOUtils, location: { hash: o.hash }, navigator: { platform: o.platform ?? "MacIntel" },
     PathUtils: { profileDir: "/prof", join: (...a) => a.join("/") },
     getComputedStyle: () => ({ getPropertyValue: () => "#111" }),
     requestAnimationFrame: fn => (frames.push(fn), frames.length),
@@ -389,7 +389,8 @@ async function openPage(opts = {}) {
     color: c => click("colors", "data-color", c),
     size: s => click("sizes", "data-size", String(s)),
     key(key, { shift = false, mod = true, target = null } = {}) {
-      const e = { key, metaKey: mod, ctrlKey: false, altKey: false, shiftKey: shift, target, taken: false,
+      const mac = /Mac/.test(o.platform ?? "MacIntel");
+      const e = { key, metaKey: mod && mac, ctrlKey: mod && !mac, altKey: false, shiftKey: shift, target, taken: false,
         preventDefault() { this.taken = true; }, stopPropagation() { this.stopped = true; } };
       docListeners.keydown(e);
       return e;
@@ -485,6 +486,22 @@ describe("easel page: drawing and saving", () => {
     assert.equal(p.els.broken.hidden, false);
     assert.equal(p.els.bar.hidden, true);
     assert.equal(p.io.reads + p.io.writes, 0);
+  });
+});
+
+describe("easel page: Linux keys", () => {
+  test("Ctrl+Z / Ctrl+Shift+Z undo and redo; Ctrl+A selects all", async () => {
+    const p = await openPage({ platform: "Linux x86_64" });
+    p.stroke([10, 10], [20, 20]);
+    p.stroke([30, 30], [40, 40]);
+    assert.equal(p.key("z").taken, true);
+    assert.equal((await p.saved()).items.length, 1);
+    p.key("z", { shift: true });
+    assert.equal((await p.saved()).items.length, 2);
+    p.tool("select");
+    p.key("a");
+    p.key("Delete", { mod: false });
+    assert.equal((await p.saved()).items.length, 0);
   });
 });
 
