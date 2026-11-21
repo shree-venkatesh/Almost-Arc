@@ -31,13 +31,15 @@ echo "Zen $(sed -n 's/^Version=//p' "$WORK/app/zen/application.ini" | head -1)"
 # ---- a fresh home and profile (Zen makes it on its first start) -------------
 rm -rf "$WORK/home"; mkdir -p "$WORK/home"
 export HOME="$WORK/home"
+# all of Zen's files under that home (GitHub's runners set XDG_CONFIG_HOME to the real one)
+unset XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
 timeout 30 "$WORK/app/zen/zen" --headless about:blank >"$WORK/first-run.log" 2>&1 || true
 for _ in $(seq 1 20); do
   grep -qs '^Default=' "$HOME"/.config/zen/installs.ini "$HOME"/.zen/installs.ini && break
   sleep 0.5
 done
 if ! grep -qs '^Default=' "$HOME"/.config/zen/installs.ini "$HOME"/.zen/installs.ini; then
-  echo "Zen's first start made no profile. Its log:"; cat "$WORK/first-run.log"; ls -la "$HOME" "$HOME/.config" 2>/dev/null
+  echo "Zen's first start made no profile. Its log:"; cat "$WORK/first-run.log"; ls -la "$HOME" "$HOME/.config" 2>/dev/null || true
   exit 1
 fi
 
