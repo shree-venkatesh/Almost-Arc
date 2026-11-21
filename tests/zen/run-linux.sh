@@ -36,6 +36,10 @@ for _ in $(seq 1 20); do
   grep -qs '^Default=' "$HOME"/.config/zen/installs.ini "$HOME"/.zen/installs.ini && break
   sleep 0.5
 done
+if ! grep -qs '^Default=' "$HOME"/.config/zen/installs.ini "$HOME"/.zen/installs.ini; then
+  echo "Zen's first start made no profile. Its log:"; cat "$WORK/first-run.log"; ls -la "$HOME" "$HOME/.config" 2>/dev/null
+  exit 1
+fi
 
 # ---- the mod, installed like a user would (Zen's folder found by install.sh) ----
 # like Zen's own Linux installer: a `zen` command in ~/.local/bin
