@@ -24,7 +24,7 @@ const W = 400, H = 225, M = 16;
 const LEFT = M, RIGHT = 1512 - W - M, TOP = 25 + M, BOTTOM = 25 + 920 - H - M;
 const FRAME = 16;   // ms per animation frame
 
-function load(prefs = {}) {
+function load(prefs = {}, { protocol = "x11" } = {}) {
   const listeners = {};
   const moves = [];
   const sheets = [];
@@ -64,6 +64,8 @@ function load(prefs = {}) {
     requestAnimationFrame: fn => { const id = nextId++; frames.push({ id, fn }); return id; },
     cancelAnimationFrame: id => { frames = frames.filter(f => f.id !== id); },
     setTimeout, clearTimeout,
+    Cc: { "@mozilla.org/gfx/info;1": { getService: () => ({ windowProtocol: protocol }) } },
+    Ci: { nsIGfxInfo: {} },
   };
   vm.runInNewContext(SRC, context);
   const fire = (type, ev = {}) => (listeners[type] || []).forEach(fn => fn(ev));
@@ -336,6 +338,23 @@ describe("setting", () => {
     env.drag(line(1000, 300, 3, 0, 100), { holdMs: 200 });
     env.settle();
     assert.equal(env.moves.length, 0);
+  });
+});
+
+describe("Wayland", () => {
+  // moveTo does nothing on Wayland: with the system's drag turned off the PiP couldn't move at all
+  test("leaves the PiP to the desktop: its own drag stays on, no swipe or fling", async () => {
+    const env = load({}, { protocol: "wayland" });
+    assert.equal(env.sheets.length, 0, "the system's window drag must stay on");
+    for (let i = 0; i < 5; i++) await env.scroll(-12, 0);
+    env.drag(line(556, 300, 30, 0, 8));
+    env.settle();
+    assert.equal(env.moves.length, 0);
+    assert.equal(env.window.__arcPipFlick, "off: wayland");
+  });
+  test("X11 keeps the swipe and the script's drag", () => {
+    const env = load({}, { protocol: "x11" });
+    assert.ok(env.sheets.some(([css]) => css.includes("no-drag")));
   });
 });
 

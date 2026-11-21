@@ -20,6 +20,14 @@
   } catch (e) {}
   if (!Services.prefs.getBoolPref("almost-arc.pip-flick", true)) return;
   if (window.__arcPipFlick) return;
+  // Wayland doesn't let an app place its own windows (moveTo does nothing there), so
+  // the script couldn't move the PiP, and with the system's own drag turned off it
+  // couldn't be moved at all. There, leave the PiP to Firefox and the desktop:
+  // dragging works as usual, no swipe or fling.
+  try {
+    const gfx = Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo);
+    if (/wayland/i.test(gfx.windowProtocol || "")) { window.__arcPipFlick = "off: wayland"; return; }
+  } catch (e) {}
 
   const TRIGGER = 40;   // swipe distance (px of scroll) before it moves
   const AXIS    = 0.4;  // how diagonal a swipe must be to change both side and top/bottom (0-1)

@@ -251,12 +251,15 @@ check("layout: compact mode hides the sidebar and it pops out on hover", `
     toggle: !!document.getElementById("almost-arc-sidebar-toggle") };
 `);
 
-// a page with a playing (muted) video, made from a canvas: no media files or network needed
+// a page with a playing video with sound (a canvas plus a quiet tone): no media files or network needed.
+// Firefox only pops out videos with an unmuted sound track on a tab switch or minimize.
 const VIDEO_PAGE = "data:text/html," + encodeURIComponent(`<body style="margin:0;background:#111">
-<canvas id=c width=640 height=360 hidden></canvas><video id=v autoplay playsinline width=640 height=360></video>
+<canvas id=c width=640 height=360 hidden></canvas><video id=v playsinline width=640 height=360></video>
 <script>const c = document.getElementById("c"), x = c.getContext("2d"); let i = 0;
 setInterval(() => { x.fillStyle = "hsl(" + (i++ * 7 % 360) + ",80%,50%)"; x.fillRect(0, 0, 640, 360); }, 40);
-const v = document.getElementById("v"); v.srcObject = c.captureStream(25); v.play();</script>`);
+const s = c.captureStream(25), ac = new AudioContext(), o = ac.createOscillator(), g = ac.createGain(), d = ac.createMediaStreamDestination();
+g.gain.value = 0.02; o.connect(g); g.connect(d); o.start(); s.addTrack(d.stream.getAudioTracks()[0]);
+const v = document.getElementById("v"); v.srcObject = s; v.play();</script>`);
 
 const PIP = `
   const pipWin = () => Services.wm.getMostRecentWindow("Toolkit:PictureInPicture");
@@ -329,7 +332,7 @@ check("PiP: drag it and let go fast: it's flung into a corner", PIP + `
   return { before, after };
 `);
 
-check("PiP: Back to Tab closes it; auto-PiP on switching tabs is on", PIP + `
+check("PiP: Back to Tab closes it; switching tabs or minimizing Zen pops a video out", PIP + `
   const w = pipWin() || await pipOpen(await openVideo());
   w.document.getElementById("unpip").click();
   await pipClosed();
@@ -338,8 +341,22 @@ check("PiP: Back to Tab closes it; auto-PiP on switching tabs is on", PIP + `
   // Linux: Firefox's covered/minimized PiP too (macOS uses the mod's own instead)
   assert(Services.prefs.getBoolPref("media.videocontrols.picture-in-picture.enable-when-occluded.enabled") === (AppConstants.platform !== "macosx"),
     "enable-when-occluded should be on except on macOS");
-  gBrowser.removeTab(gBrowser.selectedTab);
-  return true;
+  const video = gBrowser.selectedTab;
+  // switching tabs pops it out
+  const other = await openTab("data:text/html,<title>other</title>other tab");
+  await until(() => pipWin(), "a PiP after switching away from the video's tab", 6000);
+  // going back to the video's tab closes it
+  gBrowser.selectedTab = video;
+  await pipClosed();
+  await sleep(1000);
+  // and so does minimizing Zen (on Linux Firefox doesn't hear of a window covering Zen, only of minimizing it)
+  window.minimize();
+  await until(() => pipWin(), "a PiP after minimizing Zen", 6000);
+  window.restore();
+  await pipClosed();   // closed again when Zen comes back
+  await sleep(1000);
+  gBrowser.removeTab(other); gBrowser.removeTab(video);
+  return { tabSwitch: true, minimize: true };
 `);
 
 check("color wheel: installs on Zen's theme picker when it opens", `
