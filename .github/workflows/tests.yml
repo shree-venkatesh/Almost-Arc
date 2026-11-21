@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: 22
       # Zen's own libraries (not all on the runner image) + a display and a window manager
-      - run: sudo apt-get update && sudo apt-get install -y xvfb twm libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libxtst6 libx11-xcb1 libpci3 xfonts-base
+      - run: sudo apt-get update && sudo apt-get install -y xvfb twm libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libxtst6 libx11-xcb1 libpci3 xfonts-base xfonts-75dpi
       - run: tests/zen/run-linux.sh "$RUNNER_TEMP/zen" -- --shots "$RUNNER_TEMP/shots"
       - uses: actions/upload-artifact@v4
         if: always()

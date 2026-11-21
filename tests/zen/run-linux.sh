@@ -73,7 +73,7 @@ WM="${ZEN_TEST_WM:-$(command -v twm || command -v openbox || true)}"
 WM_ARGS=""
 if [ "$(basename "${WM:-x}")" = twm ]; then
   # place windows without asking for a click, no twm title bar of its own
-  printf 'RandomPlacement\nNoTitle\n' > "$WORK/twmrc"; WM_ARGS="-f $WORK/twmrc"
+  printf 'RandomPlacement\nNoTitle\nIconifyByUnmapping\n' > "$WORK/twmrc"; WM_ARGS="-f $WORK/twmrc"
 fi
 MOZ_GTK_TITLEBAR_DECORATION="${MOZ_GTK_TITLEBAR_DECORATION:-client}" \
   MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 WM="$WM" WM_ARGS="$WM_ARGS" WM_LOG="$WORK/wm.log" setsid xvfb-run -a -s "-screen 0 1440x900x24" \
