@@ -35,6 +35,7 @@ function startZen(opts = {}) {
     },
     io: { newURI: spec => ({ spec }) },
     scriptSecurityManager: { getSystemPrincipal: () => "SYSTEM" },
+    wm: { getEnumerator: () => (o.wm ? o.wm.windows : []) },
   };
   const Cc = {
     "@mozilla.org/chrome/chrome-registry;1": { getService: () => ({
@@ -76,7 +77,8 @@ function startZen(opts = {}) {
   const rootAttrs = new Set();
   const document = {
     documentElement: { toggleAttribute: (k, on) => (on ? rootAttrs.add(k) : rootAttrs.delete(k)) },
-    getElementById: id => menus[id] || Object.values(menus).flatMap(m => m.kids).find(k => k.id === id) || null,
+    getElementById: id => menus[id] || Object.values(menus).flatMap(m => m.kids).find(k => k.id === id)
+      || o.tabs.find(t => t.id === id) || null,
     createXULElement: () => {
       const listeners = {};
       return { attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener: (t, fn) => (listeners[t] = fn),
@@ -84,7 +86,8 @@ function startZen(opts = {}) {
     },
   };
   const opened = [];
-  const tabListeners = {}, progress = [];
+  const tabListeners = {}, progress = [], winProgress = [];
+  const remoteness = [];   // [tab id, remoteType] for each updateBrowserRemoteness
   const gBrowser = {
     tabs: o.tabs,
     addTab(url, params) { const tab = { url, params }; opened.push(tab); return tab; },
@@ -92,13 +95,25 @@ function startZen(opts = {}) {
     selectedBrowser: { currentURI: { spec: o.selected || "https://example.com/" } },
     tabContainer: { addEventListener: (t, fn) => (tabListeners[t] ||= []).push(fn) },
     addTabsProgressListener: l => progress.push(l),
+    addProgressListener: l => winProgress.push(l),
+    updateBrowserRemoteness(b, { remoteType }) {
+      remoteness.push([o.tabs.find(t => t.linkedBrowser === b)?.id, remoteType]);
+      b.isRemoteBrowser = remoteType !== null;
+    },
+    _insertBrowser(tab) {
+      tab.linkedPanel = "panel-" + tab.id;
+      tab.linkedBrowser = { isRemoteBrowser: true, currentURI: { spec: "about:blank" } };
+      (winListeners.TabBrowserInserted || []).forEach(fn => fn({ target: tab }));
+    },
   };
   const context = {
     Services, Cc, Ci, Components, IOUtils, PathUtils, document, gBrowser,
     console: { warn() {}, error() {} },
     crypto: { getRandomValues: a => { for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) & 255; return a; } },
-    Uint8Array, Array, Object, String, Number, Error, Promise, Math, Date, JSON,
+    Uint8Array, Array, Object, String, Number, Error, Promise, Math, Date, JSON, setTimeout, clearTimeout,
   };
+  for (const t of o.tabs) t.ownerGlobal = context;
+  if (o.wm) o.wm.windows.push(context);
   const rootListeners = {};
   context.windowRoot = { addEventListener: (t, fn) => (rootListeners[t] ||= []).push(fn) };
   context.window = context;
@@ -106,7 +121,7 @@ function startZen(opts = {}) {
   vm.createContext(context);
   vm.runInContext(SRC, context, { filename: "arcEasel.uc.js" });
   return {
-    files: o.files, writes, reg, opened, gBrowser, menus,
+    files: o.files, writes, reg, opened, gBrowser, menus, remoteness,
     get toolbarHidden() { return rootAttrs.has("almost-arc-easel"); },
     /** You switch to a tab showing this address. */
     selectTab(spec, contentDocument = null) {
@@ -118,6 +133,21 @@ function startZen(opts = {}) {
     loaded(doc) { (rootListeners.DOMContentLoaded || []).forEach(fn => fn({ target: doc })); },
     /** The selected tab goes to another address. */
     navigate(spec) { gBrowser.selectedBrowser.currentURI = { spec }; progress.forEach(l => l.onLocationChange(gBrowser.selectedBrowser)); },
+    /** This window comes to the front. */
+    activate() { (winListeners.activate || []).forEach(fn => fn({})); },
+    /** Zen gives a tab here a browser (TabBrowserInserted). */
+    insert(tab) { gBrowser._insertBrowser(tab); },
+    /** A page loads in one of this window's tabs (not necessarily the selected one). */
+    loads(tab, spec, { remote = false } = {}) {
+      tab.linkedPanel ||= "panel-" + tab.id;
+      tab.linkedBrowser = { isRemoteBrowser: remote, currentURI: { spec } };
+      progress.forEach(l => l.onLocationChange(tab.linkedBrowser, null, null, { spec }));
+    },
+    /** Zen swaps the selected tab's page in from another window (only window progress listeners hear it). */
+    swappedIn(spec, contentDocument = null) {
+      gBrowser.selectedBrowser = { currentURI: { spec }, contentDocument };
+      winProgress.forEach(l => l.onLocationChange());
+    },
     item: id => Object.values(menus).flatMap(m => m.kids).find(k => k.id === id),
     /** Zen builds its + menu now (after the script ran) and opens it. */
     plusMenuAppears() {
@@ -301,6 +331,105 @@ describe("easel: whose keys", () => {
     const z = startZen();
     z.selectTab("https://example.com/", { documentURI: "https://example.com/", documentElement: { dataset: {} } });
     assert.doesNotThrow(() => z.click({ ownerDocument: { documentURI: "chrome://browser/content/browser.xhtml" } }));
+  });
+});
+
+describe("easel: several windows (Zen's window sync)", () => {
+  // Zen keeps a copy of each tab (same id) in every window and swaps the page into the
+  // window where you select it, only between browsers in the same process.
+  const ID = "zen-tab-1";
+  const EASEL_URL = `${PREFIX}easel.html#abcdef0123456789`;
+  const tab = (id, spec, { remote = true, lazy = false, pending = false } = {}) => ({
+    id, localName: "tab", isConnected: true,
+    hasAttribute: a => a === "pending" && pending,
+    linkedPanel: lazy ? null : "panel-" + id,
+    linkedBrowser: lazy ? null : { isRemoteBrowser: remote, currentURI: { spec } },
+  });
+  const later = () => new Promise(r => setTimeout(r, 5));
+  /** win A has the easel (live, in Zen's process); win B has Zen's copies */
+  function twoWindows(copy, extraB = []) {
+    const wm = { windows: [] };
+    const easel = tab(ID, EASEL_URL, { remote: false });
+    const a = startZen({ wm, tabs: [easel, tab("zen-tab-2", "https://example.com/")] });
+    const b = startZen({ wm, tabs: [copy, ...extraB], files: a.files, reg: a.reg });
+    return { a, b, easel, copy };
+  }
+
+  test("an easel's copy in another window gets a browser in Zen's process, so Zen can move the easel there", async () => {
+    const web = tab("zen-tab-2", "https://example.com/");
+    const { b, copy } = twoWindows(tab(ID, "about:blank"), [web]);
+    await later();
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
+    assert.deepEqual(b.remoteness, [[ID, null]]);     // null: E10SUtils.NOT_REMOTE
+    assert.equal(web.linkedBrowser.isRemoteBrowser, true, "copies of web pages are left alone");
+  });
+
+  test("a copy Zen hasn't shown yet gets its browser first", async () => {
+    const { copy } = twoWindows(tab(ID, null, { lazy: true }));
+    await later();
+    assert.equal(copy.linkedPanel, "panel-" + ID);
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
+  });
+
+  test("a restored copy that hasn't loaded (pending) is left alone: it loads the easel itself", async () => {
+    const { copy, b } = twoWindows(tab(ID, null, { lazy: true, pending: true }));
+    await later();
+    assert.equal(copy.linkedPanel, null);
+    assert.deepEqual(b.remoteness, []);
+  });
+
+  test("with one window, or no easel loaded, nothing changes", async () => {
+    const solo = startZen({ wm: { windows: [] }, tabs: [tab(ID, EASEL_URL, { remote: false })] });
+    await later();
+    assert.deepEqual(solo.remoteness, []);
+    const wm = { windows: [] };
+    const a = startZen({ wm, tabs: [tab(ID, "https://example.com/")] });
+    const copy = tab(ID, "about:blank");
+    const b = startZen({ wm, tabs: [copy], files: a.files, reg: a.reg });
+    await later();
+    b.activate();
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, true);
+    assert.deepEqual(b.remoteness, []);
+  });
+
+  test("an easel opened (or reopened) later: its copies follow when it loads", async () => {
+    const wm = { windows: [] };
+    const t = tab(ID, "about:blank");
+    const a = startZen({ wm, tabs: [t] });
+    const copy = tab(ID, "about:blank");
+    const b = startZen({ wm, tabs: [copy], files: a.files, reg: a.reg });
+    await later();
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, true);
+    a.loads(t, EASEL_URL);
+    await later();
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
+    assert.deepEqual(b.remoteness, [[ID, null]]);
+  });
+
+  test("a window coming to the front fixes its copies before you can click one", () => {
+    const { b, copy } = twoWindows(tab(ID, "about:blank"));
+    b.activate();                                   // synchronously, no waiting
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
+  });
+
+  test("a copy Zen makes later and gives a browser (TabBrowserInserted) is put in Zen's process right away", async () => {
+    const { b } = twoWindows(tab("zen-tab-9", "about:blank"));
+    await later();
+    const copy = tab(ID, null, { lazy: true });   // e.g. Zen filling a new window
+    copy.ownerGlobal = b.gBrowser.tabs[0].ownerGlobal;
+    b.gBrowser.tabs.push(copy);
+    b.insert(copy);
+    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
+  });
+
+  test("after Zen moves the easel into this window, the toolbar hides and keys start as Zen's", () => {
+    const z = startZen();
+    const doc = { documentURI: EASEL_URL, documentElement: { dataset: { keys: "easel" } } };
+    z.swappedIn(EASEL_URL, doc);
+    assert.equal(z.toolbarHidden, true);
+    assert.equal(doc.documentElement.dataset.keys, "browser");
+    z.swappedIn("https://example.com/");
+    assert.equal(z.toolbarHidden, false);
   });
 });
 

@@ -909,9 +909,75 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
   try {
     gBrowser.tabContainer.addEventListener("TabSelect", syncToolbar);
     gBrowser.addTabsProgressListener({
-      onLocationChange(browser) { if (browser === gBrowser.selectedBrowser) syncToolbar(); },
+      onLocationChange(browser, progress, request, uri) {
+        if (browser === gBrowser.selectedBrowser) syncToolbar();
+        if (isEasel(uri?.spec ?? browser?.currentURI?.spec)) setTimeout(matchCopies, 0);
+      },
+    });
+    // Zen moving an easel in from another window (below) reports it only to these listeners
+    gBrowser.addProgressListener?.({
+      onLocationChange() {
+        syncToolbar();
+        keysTo(selectedEaselDoc(), "browser");
+      },
     });
     syncToolbar();
+  } catch (e) { console.warn("[arcEasel]", e); }
+
+  // ---- several windows ----------------------------------------------------
+  // Zen keeps a copy of every tab in each window (zen.window-sync) and shows a tab's page
+  // in the window where you select it by swapping the docshells of that tab's browsers,
+  // but only between two browsers in the same process. An easel runs in Zen's own
+  // process and its copies in the other windows were ordinary content-process browsers,
+  // so Zen never moved it: the other windows showed a blank page or an old screenshot
+  // (owner, 2026-11-20). So an easel's copies get a (blank) browser in Zen's process too.
+  const NOT_REMOTE = window.E10SUtils?.NOT_REMOTE ?? null;
+  function liveEasel(tab) {
+    const b = tab?.linkedPanel && tab.linkedBrowser;
+    return !!b && !b.isRemoteBrowser && isEasel(b.currentURI?.spec);
+  }
+  function inZensProcess(copy) {
+    if (!copy || copy.closing || copy.isConnected === false || copy.hasAttribute?.("pending")) return;
+    const g = copy.ownerGlobal?.gBrowser;
+    if (!g) return;
+    if (!copy.linkedPanel) g._insertBrowser?.(copy);   // a copy Zen hasn't shown yet
+    const b = copy.linkedPanel && copy.linkedBrowser;
+    if (b?.isRemoteBrowser) g.updateBrowserRemoteness(b, { remoteType: NOT_REMOTE });
+  }
+  function browserWindows() {
+    const out = [];
+    for (const w of Services.wm.getEnumerator("navigator:browser")) if (!w.closed && w.gBrowser) out.push(w);
+    return out;
+  }
+  function matchCopies() {
+    try {
+      const wins = browserWindows();
+      if (wins.length < 2) return;
+      for (const w of wins) {
+        for (const tab of w.gBrowser.tabs) {
+          if (!tab.id || !liveEasel(tab)) continue;
+          for (const other of wins) {
+            if (other === w) continue;
+            const copy = other.document.getElementById(tab.id);
+            if (copy && copy !== tab && copy.localName === "tab") inZensProcess(copy);
+          }
+        }
+      }
+    } catch (e) { console.warn("[arcEasel]", e); }
+  }
+  try {
+    // before a click in this window can select a copy (Zen swaps right after TabSelect)
+    window.addEventListener("activate", matchCopies, true);
+    // a copy getting its browser some other way: in Zen's process if its easel is live
+    window.addEventListener("TabBrowserInserted", e => {
+      const tab = e.target;
+      if (!tab?.id || liveEasel(tab)) return;
+      for (const w of browserWindows()) {
+        if (w === window) continue;
+        if (liveEasel(w.document.getElementById(tab.id))) { inZensProcess(tab); return; }
+      }
+    }, true);
+    setTimeout(matchCopies, 0);
   } catch (e) { console.warn("[arcEasel]", e); }
   window.__arcEaselOpen = openEasel;
 })();
