@@ -106,6 +106,11 @@
       return out;
     }
     let saveTimer = null;
+    let stamp = null;      // the file's lastModified when this page last read or wrote it
+    let writing = false;
+    async function fileStamp() {
+      try { return (await IOUtils.stat(file)).lastModified ?? null; } catch (e) { return null; }
+    }
     function save() {
       if (!loaded) return;
       clearTimeout(saveTimer);
@@ -113,12 +118,41 @@
     }
     async function writeNow() {
       saveTimer = null;
+      writing = true;
       try {
         await IOUtils.makeDirectory(dir, { ignoreExisting: true });
         await IOUtils.writeJSON(file, doc, { tmpPath: `${file}.tmp` });
+        stamp = await fileStamp();
       } catch (e) { console.error("[easel] save failed", e); }
+      finally { writing = false; }
+    }
+    // With several Zen windows, each shows its own copy of this page (arcEasel.uc.js):
+    // a copy that's on screen picks up what another one saved, unless you're mid-change.
+    let refreshing = false;
+    const busy = () => !loaded || writing || saveTimer || editing || current || drag || erasing
+      || document.activeElement === nameEl;
+    async function refresh() {
+      if (refreshing || busy()) return;
+      refreshing = true;
+      try {
+        const now = await fileStamp();
+        if (now === null || now === stamp) return;
+        let data;
+        try { data = await IOUtils.readJSON(file); } catch (e) { return; }   // mid-write elsewhere: next time
+        if (busy()) return;
+        stamp = now;
+        doc = clean(data);
+        undoStack.length = 0;      // the steps were about the old drawing
+        redoStack.length = 0;
+        selected = new Set();
+        nameEl.value = doc.name;
+        showName();
+        updateButtons();
+        draw();
+      } finally { refreshing = false; }
     }
     async function load() {
+      stamp = await fileStamp();
       try {
         if (await IOUtils.exists(file)) {
           try { doc = clean(await IOUtils.readJSON(file)); }
@@ -650,6 +684,9 @@
     }, true);
 
     window.addEventListener("resize", resize);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
+    setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 1000);
     window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", draw);
     // a last save when the tab closes or reloads
     window.addEventListener("pagehide", () => {
@@ -902,82 +939,108 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
     gBrowser.tabContainer.addEventListener("TabSelect", () => keysTo(selectedEaselDoc(), "browser"));
   } catch (e) { console.warn("[arcEasel]", e); }
 
+  // ---- several windows ----------------------------------------------------
+  // Zen keeps a copy of every tab in each window (zen.window-sync, same tab.id) and shows
+  // a tab's page in the window where you select it by swapping docshells between them.
+  // That doesn't work for an easel (a page in Zen's own process): 1.2.8 showed a blank page
+  // in the other windows, and 1.2.9, which let Zen move it, left a window broken until
+  // Zen restarted (owner, 2026-11-20). So Zen never moves an easel: each window shows its
+  // own copy of the page (the same drawing file; a copy on screen picks up what another
+  // saved), and Zen is told its copy here is already showing (tab._zenContentsVisible,
+  // what ZenWindowSync.sys.mjs checks before swapping).
+  const EASEL_URL = /^chrome:\/\/almostarc-easel\/content\/easel\.html#[a-z0-9]{8,32}$/;   // PREFIX + easel.html#<id>
+  function browserWindows() {
+    const out = [];
+    try {
+      for (const w of Services.wm.getEnumerator("navigator:browser")) if (!w.closed && w.gBrowser) out.push(w);
+    } catch (e) {}
+    return out;
+  }
+  // the easel this tab itself shows, or will show when it restores
+  function ownEasel(tab) {
+    const spec = tab?.linkedPanel && tab.linkedBrowser?.currentURI?.spec;
+    if (EASEL_URL.test(spec || "")) return spec;
+    if (tab?.hasAttribute?.("pending")) {
+      try {
+        const state = JSON.parse(SessionStore.getTabState(tab));
+        const url = state.entries?.[(state.index || state.entries.length) - 1]?.url;
+        if (EASEL_URL.test(url || "")) return url;
+      } catch (e) {}
+    }
+    return null;
+  }
+  // the easel this tab is (itself, or Zen's copy of one in another window)
+  function easelOf(tab) {
+    if (!tab) return null;
+    const own = ownEasel(tab);
+    if (own || !tab.id) return own;
+    for (const w of browserWindows()) {
+      if (w === tab.ownerGlobal) continue;
+      const other = w.document.getElementById(tab.id);
+      const url = other?.localName === "tab" ? ownEasel(other) : null;
+      if (url) return url;
+    }
+    return null;
+  }
+  // a selected easel tab here: shows its own page, and Zen leaves it alone
+  const loading = new WeakSet();
+  function showHere(tab) {
+    const url = easelOf(tab);
+    if (!url) return;
+    tab._zenContentsVisible = true;
+    if (ownEasel(tab)) return;
+    // Zen's blank copy: load the easel in it (after Zen's own handling of this switch)
+    setTimeout(() => {
+      try {
+        const b = tab.linkedBrowser;
+        if (!tab.selected || tab.closing || tab.hasAttribute("pending") || !b || ownEasel(tab) || loading.has(tab)) return;
+        loading.add(tab);
+        setTimeout(() => loading.delete(tab), 2000);   // until the load shows in currentURI
+        b.loadURI(Services.io.newURI(url), {
+          triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+          loadFlags: Ci.nsIWebNavigation?.LOAD_FLAGS_REPLACE_HISTORY ?? 0,
+        });
+      } catch (e) { console.warn("[arcEasel]", e); }
+    }, 0);
+  }
+  // Zen swaps after TabSelect (in a promise callback, so after these listeners), and only
+  // tabs marked visible: a switch away from an easel unmarks it, so Zen doesn't move it into
+  // another window that has the same easel selected.
+  function onSelect(e) {
+    try {
+      const prev = e?.detail?.previousTab;
+      if (prev && easelOf(prev)) delete prev._zenContentsVisible;
+      showHere(gBrowser.selectedTab);
+    } catch (err) { console.warn("[arcEasel]", err); }
+  }
+  function showSelected() { try { showHere(gBrowser.selectedTab); } catch (e) { console.warn("[arcEasel]", e); } }
+  // Closing a window, Zen moves the tabs it shows into another window: not easels.
+  function closing() {
+    try { for (const t of gBrowser.tabs) if (easelOf(t)) delete t._zenContentsVisible; } catch (e) {}
+  }
+
   // Zen's top toolbar hides while an easel tab is selected (chrome.css, :root[almost-arc-easel])
   function syncToolbar() {
-    document.documentElement.toggleAttribute("almost-arc-easel", isEasel(gBrowser.selectedBrowser?.currentURI?.spec));
+    document.documentElement.toggleAttribute("almost-arc-easel",
+      isEasel(gBrowser.selectedBrowser?.currentURI?.spec) || !!easelOf(gBrowser.selectedTab));
   }
   try {
+    gBrowser.tabContainer.addEventListener("TabSelect", onSelect);
     gBrowser.tabContainer.addEventListener("TabSelect", syncToolbar);
     gBrowser.addTabsProgressListener({
-      onLocationChange(browser, progress, request, uri) {
-        if (browser === gBrowser.selectedBrowser) syncToolbar();
-        if (isEasel(uri?.spec ?? browser?.currentURI?.spec)) setTimeout(matchCopies, 0);
-      },
+      onLocationChange(browser) { if (browser === gBrowser.selectedBrowser) syncToolbar(); },
     });
-    // Zen moving an easel in from another window (below) reports it only to these listeners
     gBrowser.addProgressListener?.({
       onLocationChange() {
         syncToolbar();
         keysTo(selectedEaselDoc(), "browser");
       },
     });
+    window.addEventListener("activate", showSelected, true);
+    window.addEventListener("DOMWindowClose", closing, true);
+    window.addEventListener("close", closing, true);
     syncToolbar();
-  } catch (e) { console.warn("[arcEasel]", e); }
-
-  // ---- several windows ----------------------------------------------------
-  // Zen keeps a copy of every tab in each window (zen.window-sync) and shows a tab's page
-  // in the window where you select it by swapping the docshells of that tab's browsers,
-  // but only between two browsers in the same process. An easel runs in Zen's own
-  // process and its copies in the other windows were ordinary content-process browsers,
-  // so Zen never moved it: the other windows showed a blank page or an old screenshot
-  // (owner, 2026-11-20). So an easel's copies get a (blank) browser in Zen's process too.
-  const NOT_REMOTE = window.E10SUtils?.NOT_REMOTE ?? null;
-  function liveEasel(tab) {
-    const b = tab?.linkedPanel && tab.linkedBrowser;
-    return !!b && !b.isRemoteBrowser && isEasel(b.currentURI?.spec);
-  }
-  function inZensProcess(copy) {
-    if (!copy || copy.closing || copy.isConnected === false || copy.hasAttribute?.("pending")) return;
-    const g = copy.ownerGlobal?.gBrowser;
-    if (!g) return;
-    if (!copy.linkedPanel) g._insertBrowser?.(copy);   // a copy Zen hasn't shown yet
-    const b = copy.linkedPanel && copy.linkedBrowser;
-    if (b?.isRemoteBrowser) g.updateBrowserRemoteness(b, { remoteType: NOT_REMOTE });
-  }
-  function browserWindows() {
-    const out = [];
-    for (const w of Services.wm.getEnumerator("navigator:browser")) if (!w.closed && w.gBrowser) out.push(w);
-    return out;
-  }
-  function matchCopies() {
-    try {
-      const wins = browserWindows();
-      if (wins.length < 2) return;
-      for (const w of wins) {
-        for (const tab of w.gBrowser.tabs) {
-          if (!tab.id || !liveEasel(tab)) continue;
-          for (const other of wins) {
-            if (other === w) continue;
-            const copy = other.document.getElementById(tab.id);
-            if (copy && copy !== tab && copy.localName === "tab") inZensProcess(copy);
-          }
-        }
-      }
-    } catch (e) { console.warn("[arcEasel]", e); }
-  }
-  try {
-    // before a click in this window can select a copy (Zen swaps right after TabSelect)
-    window.addEventListener("activate", matchCopies, true);
-    // a copy getting its browser some other way: in Zen's process if its easel is live
-    window.addEventListener("TabBrowserInserted", e => {
-      const tab = e.target;
-      if (!tab?.id || liveEasel(tab)) return;
-      for (const w of browserWindows()) {
-        if (w === window) continue;
-        if (liveEasel(w.document.getElementById(tab.id))) { inZensProcess(tab); return; }
-      }
-    }, true);
-    setTimeout(matchCopies, 0);
+    setTimeout(showSelected, 0);
   } catch (e) { console.warn("[arcEasel]", e); }
   window.__arcEaselOpen = openEasel;
 })();

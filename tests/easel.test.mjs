@@ -49,7 +49,7 @@ function startZen(opts = {}) {
       exists() { return o.files.has(this.path); },
     }) },
   };
-  const Ci = { nsIChromeRegistry: {}, nsIFile: {}, nsIComponentRegistrar: {} };
+  const Ci = { nsIChromeRegistry: {}, nsIFile: {}, nsIComponentRegistrar: {}, nsIWebNavigation: { LOAD_FLAGS_REPLACE_HISTORY: 64 } };
   const Components = { manager: { QueryInterface: () => ({
     autoRegister(f) { reg.autoRegistered.push(f.path); reg.registered = true; },
   }) } };
@@ -87,7 +87,6 @@ function startZen(opts = {}) {
   };
   const opened = [];
   const tabListeners = {}, progress = [], winProgress = [];
-  const remoteness = [];   // [tab id, remoteType] for each updateBrowserRemoteness
   const gBrowser = {
     tabs: o.tabs,
     addTab(url, params) { const tab = { url, params }; opened.push(tab); return tab; },
@@ -96,21 +95,13 @@ function startZen(opts = {}) {
     tabContainer: { addEventListener: (t, fn) => (tabListeners[t] ||= []).push(fn) },
     addTabsProgressListener: l => progress.push(l),
     addProgressListener: l => winProgress.push(l),
-    updateBrowserRemoteness(b, { remoteType }) {
-      remoteness.push([o.tabs.find(t => t.linkedBrowser === b)?.id, remoteType]);
-      b.isRemoteBrowser = remoteType !== null;
-    },
-    _insertBrowser(tab) {
-      tab.linkedPanel = "panel-" + tab.id;
-      tab.linkedBrowser = { isRemoteBrowser: true, currentURI: { spec: "about:blank" } };
-      (winListeners.TabBrowserInserted || []).forEach(fn => fn({ target: tab }));
-    },
   };
   const context = {
     Services, Cc, Ci, Components, IOUtils, PathUtils, document, gBrowser,
+    SessionStore: { getTabState: t => JSON.stringify(t.state || {}) },
     console: { warn() {}, error() {} },
     crypto: { getRandomValues: a => { for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) & 255; return a; } },
-    Uint8Array, Array, Object, String, Number, Error, Promise, Math, Date, JSON, setTimeout, clearTimeout,
+    Uint8Array, Array, Object, String, Number, Error, Promise, Math, Date, JSON, setTimeout, clearTimeout, WeakSet, RegExp,
   };
   for (const t of o.tabs) t.ownerGlobal = context;
   if (o.wm) o.wm.windows.push(context);
@@ -121,7 +112,7 @@ function startZen(opts = {}) {
   vm.createContext(context);
   vm.runInContext(SRC, context, { filename: "arcEasel.uc.js" });
   return {
-    files: o.files, writes, reg, opened, gBrowser, menus, remoteness,
+    files: o.files, writes, reg, opened, gBrowser, menus,
     get toolbarHidden() { return rootAttrs.has("almost-arc-easel"); },
     /** You switch to a tab showing this address. */
     selectTab(spec, contentDocument = null) {
@@ -135,14 +126,17 @@ function startZen(opts = {}) {
     navigate(spec) { gBrowser.selectedBrowser.currentURI = { spec }; progress.forEach(l => l.onLocationChange(gBrowser.selectedBrowser)); },
     /** This window comes to the front. */
     activate() { (winListeners.activate || []).forEach(fn => fn({})); },
-    /** Zen gives a tab here a browser (TabBrowserInserted). */
-    insert(tab) { gBrowser._insertBrowser(tab); },
-    /** A page loads in one of this window's tabs (not necessarily the selected one). */
-    loads(tab, spec, { remote = false } = {}) {
-      tab.linkedPanel ||= "panel-" + tab.id;
-      tab.linkedBrowser = { isRemoteBrowser: remote, currentURI: { spec } };
-      progress.forEach(l => l.onLocationChange(tab.linkedBrowser, null, null, { spec }));
+    /** You select this tab object (TabSelect with detail.previousTab). */
+    pick(tab) {
+      const prev = gBrowser.selectedTab;
+      if (prev) prev.selected = false;
+      tab.selected = true;
+      gBrowser.selectedTab = tab;
+      gBrowser.selectedBrowser = tab.linkedBrowser || { currentURI: { spec: "about:blank" } };
+      (tabListeners.TabSelect || []).forEach(fn => fn({ target: tab, detail: { previousTab: prev } }));
     },
+    /** The window is about to close. */
+    closeWindow() { (winListeners.DOMWindowClose || []).forEach(fn => fn({})); },
     /** Zen swaps the selected tab's page in from another window (only window progress listeners hear it). */
     swappedIn(spec, contentDocument = null) {
       gBrowser.selectedBrowser = { currentURI: { spec }, contentDocument };
@@ -335,94 +329,108 @@ describe("easel: whose keys", () => {
 });
 
 describe("easel: several windows (Zen's window sync)", () => {
-  // Zen keeps a copy of each tab (same id) in every window and swaps the page into the
-  // window where you select it, only between browsers in the same process.
+  // Zen keeps a copy of each tab (same id) in every window and swaps the page into the window
+  // where you select it, unless its copy there is marked as showing (_zenContentsVisible).
   const ID = "zen-tab-1";
   const EASEL_URL = `${PREFIX}easel.html#abcdef0123456789`;
-  const tab = (id, spec, { remote = true, lazy = false, pending = false } = {}) => ({
-    id, localName: "tab", isConnected: true,
-    hasAttribute: a => a === "pending" && pending,
-    linkedPanel: lazy ? null : "panel-" + id,
-    linkedBrowser: lazy ? null : { isRemoteBrowser: remote, currentURI: { spec } },
-  });
+  const tab = (id, spec, { remote = true, pending = false, state = null } = {}) => {
+    const loads = [];
+    return { id, localName: "tab", selected: false, closing: false, loads, state,
+      hasAttribute: a => a === "pending" && pending,
+      linkedPanel: pending ? null : "panel-" + id,
+      linkedBrowser: pending ? null : { isRemoteBrowser: remote, currentURI: { spec },
+        loadURI(uri, params) { loads.push([uri.spec, params.loadFlags, params.triggeringPrincipal]); } } };
+  };
   const later = () => new Promise(r => setTimeout(r, 5));
-  /** win A has the easel (live, in Zen's process); win B has Zen's copies */
-  function twoWindows(copy, extraB = []) {
+  /** win A has the easel; win B has Zen's copy of it (and a web tab) */
+  function twoWindows(copy = tab(ID, "about:blank")) {
     const wm = { windows: [] };
     const easel = tab(ID, EASEL_URL, { remote: false });
-    const a = startZen({ wm, tabs: [easel, tab("zen-tab-2", "https://example.com/")] });
-    const b = startZen({ wm, tabs: [copy, ...extraB], files: a.files, reg: a.reg });
-    return { a, b, easel, copy };
+    easel._zenContentsVisible = true;
+    const web = tab("zen-tab-2", "https://example.com/");
+    const a = startZen({ wm, tabs: [easel, web] });
+    const webB = tab("zen-tab-2", "https://example.com/");
+    const b = startZen({ wm, tabs: [webB, copy], files: a.files, reg: a.reg });
+    a.pick(easel);
+    b.pick(webB);
+    return { a, b, easel, copy, web, webB };
   }
 
-  test("an easel's copy in another window gets a browser in Zen's process, so Zen can move the easel there", async () => {
-    const web = tab("zen-tab-2", "https://example.com/");
-    const { b, copy } = twoWindows(tab(ID, "about:blank"), [web]);
+  test("selecting Zen's copy of an easel loads the easel in that window, and Zen is told not to move it", async () => {
+    const { b, copy } = twoWindows();
+    b.pick(copy);
+    assert.equal(copy._zenContentsVisible, true, "marked during TabSelect, before Zen's swap runs");
+    assert.equal(b.toolbarHidden, true);
     await later();
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
-    assert.deepEqual(b.remoteness, [[ID, null]]);     // null: E10SUtils.NOT_REMOTE
-    assert.equal(web.linkedBrowser.isRemoteBrowser, true, "copies of web pages are left alone");
+    assert.deepEqual(copy.loads, [[EASEL_URL, 64, "SYSTEM"]]);   // replaces the blank page in its history
   });
 
-  test("a copy Zen hasn't shown yet gets its browser first", async () => {
-    const { copy } = twoWindows(tab(ID, null, { lazy: true }));
-    await later();
-    assert.equal(copy.linkedPanel, "panel-" + ID);
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
+  test("switching away from an easel unmarks it, so Zen doesn't carry it into another window", () => {
+    const { a, easel, web } = twoWindows();
+    a.pick(web);
+    assert.equal("_zenContentsVisible" in easel, false);
+    a.pick(easel);
+    assert.equal(easel._zenContentsVisible, true);
   });
 
-  test("a restored copy that hasn't loaded (pending) is left alone: it loads the easel itself", async () => {
-    const { copy, b } = twoWindows(tab(ID, null, { lazy: true, pending: true }));
+  test("other tabs are left to Zen", async () => {
+    const { a, b, web, webB } = twoWindows();
+    web._zenContentsVisible = true;
+    a.pick(tab("zen-tab-3", "https://example.org/"));
+    assert.equal(web._zenContentsVisible, true);
+    b.pick(tab("zen-tab-4", "https://example.net/"));
+    b.pick(webB);
     await later();
-    assert.equal(copy.linkedPanel, null);
-    assert.deepEqual(b.remoteness, []);
+    assert.equal(webB._zenContentsVisible, undefined);
+    assert.deepEqual(webB.loads, []);
   });
 
-  test("with one window, or no easel loaded, nothing changes", async () => {
-    const solo = startZen({ wm: { windows: [] }, tabs: [tab(ID, EASEL_URL, { remote: false })] });
+  test("a copy still restoring the easel (pending) is marked but not loaded twice", async () => {
+    const copy = tab(ID, null, { pending: true, state: { index: 1, entries: [{ url: EASEL_URL }] } });
+    const { b } = twoWindows(copy);
+    b.pick(copy);
+    assert.equal(copy._zenContentsVisible, true);
     await later();
-    assert.deepEqual(solo.remoteness, []);
+    assert.deepEqual(copy.loads, []);
+  });
+
+  test("an easel that's still restoring in the other window is found through its saved state", async () => {
     const wm = { windows: [] };
-    const a = startZen({ wm, tabs: [tab(ID, "https://example.com/")] });
+    const restoring = tab(ID, null, { pending: true, state: { index: 1, entries: [{ url: EASEL_URL }] } });
+    startZen({ wm, tabs: [restoring] });
     const copy = tab(ID, "about:blank");
-    const b = startZen({ wm, tabs: [copy], files: a.files, reg: a.reg });
+    const b = startZen({ wm, tabs: [copy] });
+    b.pick(copy);
     await later();
+    assert.deepEqual(copy.loads.map(l => l[0]), [EASEL_URL]);
+  });
+
+  test("only a real easel address is ever loaded into a copy", async () => {
+    const wm = { windows: [] };
+    startZen({ wm, tabs: [tab(ID, `${PREFIX}easel.html#../../x`, { remote: false })] });
+    const copy = tab(ID, "about:blank");
+    const b = startZen({ wm, tabs: [copy] });
+    b.pick(copy);
+    await later();
+    assert.deepEqual(copy.loads, []);
+    assert.equal(copy._zenContentsVisible, undefined);
+  });
+
+  test("a window coming to the front marks its selected easel copy", async () => {
+    const { b, copy } = twoWindows();
+    b.gBrowser.selectedTab = copy;      // selected before this version, say
+    copy.selected = true;
     b.activate();
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, true);
-    assert.deepEqual(b.remoteness, []);
+    assert.equal(copy._zenContentsVisible, true);
   });
 
-  test("an easel opened (or reopened) later: its copies follow when it loads", async () => {
-    const wm = { windows: [] };
-    const t = tab(ID, "about:blank");
-    const a = startZen({ wm, tabs: [t] });
-    const copy = tab(ID, "about:blank");
-    const b = startZen({ wm, tabs: [copy], files: a.files, reg: a.reg });
-    await later();
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, true);
-    a.loads(t, EASEL_URL);
-    await later();
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
-    assert.deepEqual(b.remoteness, [[ID, null]]);
+  test("closing a window unmarks its easels, so Zen doesn't move them into another window", () => {
+    const { a, easel } = twoWindows();
+    a.closeWindow();
+    assert.equal("_zenContentsVisible" in easel, false);
   });
 
-  test("a window coming to the front fixes its copies before you can click one", () => {
-    const { b, copy } = twoWindows(tab(ID, "about:blank"));
-    b.activate();                                   // synchronously, no waiting
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
-  });
-
-  test("a copy Zen makes later and gives a browser (TabBrowserInserted) is put in Zen's process right away", async () => {
-    const { b } = twoWindows(tab("zen-tab-9", "about:blank"));
-    await later();
-    const copy = tab(ID, null, { lazy: true });   // e.g. Zen filling a new window
-    copy.ownerGlobal = b.gBrowser.tabs[0].ownerGlobal;
-    b.gBrowser.tabs.push(copy);
-    b.insert(copy);
-    assert.equal(copy.linkedBrowser.isRemoteBrowser, false);
-  });
-
-  test("after Zen moves the easel into this window, the toolbar hides and keys start as Zen's", () => {
+  test("after Zen moves a page in (window progress listener), the toolbar and keys follow", () => {
     const z = startZen();
     const doc = { documentURI: EASEL_URL, documentElement: { dataset: { keys: "easel" } } };
     z.swappedIn(EASEL_URL, doc);
@@ -448,12 +456,15 @@ async function openPage(opts = {}) {
   const js = await pageSource();
   const o = { hash: `#${ID}`, ...opts };
   const disk = new Map();
-  if (o.saved) disk.set(FILE, JSON.parse(JSON.stringify(o.saved)));
+  const mtime = new Map();
+  let clock = 1000;
+  if (o.saved) { disk.set(FILE, JSON.parse(JSON.stringify(o.saved))); mtime.set(FILE, clock); }
   const io = { reads: 0, moves: [], writes: 0 };
   const IOUtils = {
     async exists(p) { return disk.has(p) || (o.unreadable && p === FILE); },
     async readJSON(p) { io.reads++; if (o.unreadable) throw new Error("bad JSON"); return JSON.parse(JSON.stringify(disk.get(p))); },
-    async writeJSON(p, data) { io.writes++; disk.set(p, JSON.parse(JSON.stringify(data))); },
+    async writeJSON(p, data) { io.writes++; disk.set(p, JSON.parse(JSON.stringify(data))); mtime.set(p, ++clock); },
+    async stat(p) { if (!disk.has(p)) throw new Error("NotFound"); return { lastModified: mtime.get(p) }; },
     async makeDirectory() {},
     async move(a, b) { io.moves.push([a, b]); },
   };
@@ -478,11 +489,13 @@ async function openPage(opts = {}) {
   const docListeners = {};
   const document = {
     title: "Untitled Easel",
+    visibilityState: "visible",
+    get activeElement() { return focused; },
     documentElement: { dataset: {} },
     getElementById: id => els[id] || null,
     addEventListener: (t, fn) => (docListeners[t] = fn),
   };
-  let timers = [], frames = [];
+  let timers = [], frames = [], intervals = [];
   const window = { innerWidth: 800, innerHeight: 600, devicePixelRatio: 2, addEventListener() {},
     matchMedia: () => ({ addEventListener() {} }) };
   const context = {
@@ -491,6 +504,7 @@ async function openPage(opts = {}) {
     getComputedStyle: () => ({ getPropertyValue: () => "#111" }),
     requestAnimationFrame: fn => (frames.push(fn), frames.length),
     setTimeout: fn => (timers.push(fn), timers.length), clearTimeout: () => { timers = timers.filter(f => f.keep); },
+    setInterval: fn => (intervals.push(fn), intervals.length),
     console: { error() {} }, Math, JSON, Array, Number, String, Date, Promise, Object, Set,
   };
   vm.createContext(context);
@@ -506,6 +520,10 @@ async function openPage(opts = {}) {
   const p = {
     els, io, disk, document, drawn,
     get focused() { return focused; },
+    /** Another window's copy of this easel saves this. */
+    elsewhere(data) { disk.set(FILE, JSON.parse(JSON.stringify(data))); mtime.set(FILE, ++clock); },
+    /** A second passes (the page checks the file while on screen). */
+    async second() { intervals.forEach(f => f()); await settle(); await settle(); },
     /** Let the save happen. */
     async saved() { timers.splice(0).forEach(f => f()); await settle(); await settle(); return disk.get(FILE); },
     /** The canvas as it is now. */
@@ -964,6 +982,54 @@ describe("easel page: shapes", () => {
       { k: "star", c: "ink", w: 5, x0: 1, y0: 1, x1: 2, y1: 2 }, box.items[0]] } });
     p.stroke([9, 9]);
     assert.deepEqual(firsts(await p.saved()), ["rect", [9, 9]]);
+  });
+});
+
+describe("easel page: the same easel in several windows", () => {
+  const line = { c: "ink", w: 5, p: [[1, 1], [9, 9]] };
+
+  test("a copy on screen picks up what another window's copy saved", async () => {
+    const p = await openPage({ saved: { v: 2, name: "", items: [] } });
+    p.stroke([10, 10], [20, 20]);
+    await p.saved();
+    p.elsewhere({ v: 2, name: "From window 2", items: [line, line] });
+    await p.second();
+    assert.equal(p.els.name.value, "From window 2");
+    p.key("z");                                     // its undo steps were about the old drawing
+    assert.equal((await p.saved()).items.length, 2);
+    assert.equal(p.els.undo.disabled, true);
+  });
+
+  test("its own saves aren't taken for someone else's", async () => {
+    const p = await openPage();
+    p.stroke([10, 10], [20, 20]);
+    await p.saved();
+    const reads = p.io.reads;
+    await p.second();
+    assert.equal(p.io.reads, reads);
+    p.key("z");
+    assert.equal((await p.saved()).items.length, 0, "undo still works");
+  });
+
+  test("not while you're in the middle of something: typing a text box, or a change not yet saved", async () => {
+    const p = await openPage();
+    p.tool("text");
+    p.shiftClick([50, 50]);
+    p.type("hi");
+    p.elsewhere({ v: 2, name: "", items: [line] });
+    await p.second();
+    assert.equal(p.focused?.id, "editor");
+    p.editorKey("Escape");
+    assert.deepEqual(firsts(await p.saved()), ["hi"], "yours is saved over it");
+  });
+
+  test("a copy that isn't on screen doesn't check", async () => {
+    const p = await openPage();
+    p.document.visibilityState = "hidden";
+    p.elsewhere({ v: 2, name: "x", items: [line] });
+    const reads = p.io.reads;
+    await p.second();
+    assert.equal(p.io.reads, reads);
   });
 });
 
