@@ -76,8 +76,8 @@ if [ "$(basename "${WM:-x}")" = twm ]; then
   printf 'RandomPlacement\nNoTitle\n' > "$WORK/twmrc"; WM_ARGS="-f $WORK/twmrc"
 fi
 MOZ_GTK_TITLEBAR_DECORATION="${MOZ_GTK_TITLEBAR_DECORATION:-client}" \
-  MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 WM="$WM" WM_ARGS="$WM_ARGS" setsid xvfb-run -a -s "-screen 0 1440x900x24" \
-  WM_LOG="$WORK/wm.log" bash -c '[ -n "$WM" ] && { "$WM" $WM_ARGS >"$WM_LOG" 2>&1 & sleep 1; }; exec "$0" "$@"' \
+  MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 WM="$WM" WM_ARGS="$WM_ARGS" WM_LOG="$WORK/wm.log" setsid xvfb-run -a -s "-screen 0 1440x900x24" \
+  bash -c '[ -n "$WM" ] && { "$WM" $WM_ARGS >"$WM_LOG" 2>&1 & sleep 1; }; exec "$0" "$@"' \
   "$WORK/app/zen/zen" --marionette -profile "$PROFILE" >"$WORK/zen.log" 2>&1 &
 ZEN_PID=$!
 trap 'kill -- -$ZEN_PID 2>/dev/null || true' EXIT
