@@ -752,6 +752,8 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
 [data-size] .a { display: none; font-weight: 600; line-height: 1; color: var(--ink); }
 :root[data-sizes="text"] [data-size] .dot { display: none; }
 :root[data-sizes="text"] [data-size] .a { display: block; }
+/* the same easel is in use in another Zen window (arcEasel.uc.js sets data-idle) */
+:root[data-idle] #ink, :root[data-idle] #name, :root[data-idle] #bar { filter: grayscale(1); opacity: .45; }
 #broken { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
 `;
 
@@ -1015,6 +1017,23 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
   }
   function showSelected() { try { showHere(gBrowser.selectedTab); } catch (e) { console.warn("[arcEasel]", e); } }
   // Closing a window, Zen moves the tabs it shows into another window: not easels.
+  // With the same easel on screen in two windows, the copy outside the window you're using
+  // is grayed out (owner, 2026-11-20): <html data-idle> on its page. Zen in the background
+  // (no active window) changes nothing.
+  function markIdle() {
+    try {
+      const active = Services.focus.activeWindow;
+      if (!active?.gBrowser) return;
+      const inUse = easelOf(active.gBrowser.selectedTab);
+      for (const w of browserWindows()) {
+        const d = w.gBrowser.selectedBrowser?.contentDocument;
+        if (!d?.documentElement || !isEasel(d.documentURI)) continue;
+        const idle = w !== active && !!inUse && easelOf(w.gBrowser.selectedTab) === inUse;
+        if (idle) d.documentElement.dataset.idle = "";
+        else delete d.documentElement.dataset.idle;
+      }
+    } catch (e) { console.warn("[arcEasel]", e); }
+  }
   function closing() {
     try { for (const t of gBrowser.tabs) if (easelOf(t)) delete t._zenContentsVisible; } catch (e) {}
   }
@@ -1037,6 +1056,11 @@ button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke
       },
     });
     window.addEventListener("activate", showSelected, true);
+    window.addEventListener("activate", markIdle, true);
+    gBrowser.tabContainer.addEventListener("TabSelect", markIdle);
+    window.windowRoot?.addEventListener("DOMContentLoaded", e => {
+      if (isEasel((e.target?.ownerDocument || e.target)?.documentURI)) markIdle();
+    }, true);
     window.addEventListener("DOMWindowClose", closing, true);
     window.addEventListener("close", closing, true);
     syncToolbar();

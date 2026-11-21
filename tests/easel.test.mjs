@@ -36,6 +36,7 @@ function startZen(opts = {}) {
     io: { newURI: spec => ({ spec }) },
     scriptSecurityManager: { getSystemPrincipal: () => "SYSTEM" },
     wm: { getEnumerator: () => (o.wm ? o.wm.windows : []) },
+    focus: { get activeWindow() { return o.wm?.active ?? null; } },
   };
   const Cc = {
     "@mozilla.org/chrome/chrome-registry;1": { getService: () => ({
@@ -353,7 +354,7 @@ describe("easel: several windows (Zen's window sync)", () => {
     const b = startZen({ wm, tabs: [webB, copy], files: a.files, reg: a.reg });
     a.pick(easel);
     b.pick(webB);
-    return { a, b, easel, copy, web, webB };
+    return { a, b, easel, copy, web, webB, wm };
   }
 
   test("selecting Zen's copy of an easel loads the easel in that window, and Zen is told not to move it", async () => {
@@ -428,6 +429,61 @@ describe("easel: several windows (Zen's window sync)", () => {
     const { a, easel } = twoWindows();
     a.closeWindow();
     assert.equal("_zenContentsVisible" in easel, false);
+  });
+
+  describe("the copy not in use is grayed out", () => {
+    const page = url => ({ documentURI: url, documentElement: { dataset: {} } });
+    const idle = t => "idle" in t.linkedBrowser.contentDocument.documentElement.dataset;
+    const ctx = z => z.gBrowser.tabs[0].ownerGlobal;
+    /** both windows have the easel selected, each with its own page */
+    function pair() {
+      const w = twoWindows();
+      w.easel.linkedBrowser.contentDocument = page(EASEL_URL);
+      w.b.pick(w.copy);
+      w.copy.linkedBrowser.currentURI = { spec: EASEL_URL };
+      w.copy.linkedBrowser.contentDocument = page(EASEL_URL);
+      w.use = z => { w.wm.active = ctx(z); z.activate(); };
+      return w;
+    }
+
+    test("the window you're in shows it in color, the other one grayed; switching windows swaps them", () => {
+      const w = pair();
+      w.use(w.b);
+      assert.equal(idle(w.easel), true);
+      assert.equal(idle(w.copy), false);
+      w.use(w.a);
+      assert.equal(idle(w.easel), false);
+      assert.equal(idle(w.copy), true);
+    });
+
+    test("switching to another tab in the window you're in: the other copy isn't grayed any more", () => {
+      const w = pair();
+      w.use(w.b);
+      w.b.pick(w.webB);
+      assert.equal(idle(w.easel), false);
+    });
+
+    test("a different easel in the other window isn't grayed", () => {
+      const w = pair();
+      w.copy.id = "zen-tab-7";
+      w.copy.linkedBrowser.currentURI = { spec: `${PREFIX}easel.html#0123456789abcdef` };
+      w.use(w.b);
+      assert.equal(idle(w.easel), false);
+    });
+
+    test("Zen in the background (no active window) changes nothing", () => {
+      const w = pair();
+      w.use(w.b);
+      w.wm.active = null;
+      w.a.activate();
+      assert.equal(idle(w.easel), true);
+    });
+
+    test("the page grays its canvas, name and toolbar for data-idle", async () => {
+      const z = startZen();
+      await settle(); await settle();
+      assert.match(z.files.get(`${PAGE_DIR}/easel.css`), /:root\[data-idle\] #ink[^{]*\{ filter: grayscale\(1\); opacity: \.45; \}/);
+    });
   });
 
   test("after Zen moves a page in (window progress listener), the toolbar and keys follow", () => {
