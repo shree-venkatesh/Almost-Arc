@@ -77,7 +77,7 @@ if [ "$(basename "${WM:-x}")" = twm ]; then
 fi
 MOZ_GTK_TITLEBAR_DECORATION="${MOZ_GTK_TITLEBAR_DECORATION:-client}" \
   MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 WM="$WM" WM_ARGS="$WM_ARGS" setsid xvfb-run -a -s "-screen 0 1440x900x24" \
-  bash -c '[ -n "$WM" ] && { "$WM" $WM_ARGS >/dev/null 2>&1 & sleep 1; }; exec "$0" "$@"' \
+  WM_LOG="$WORK/wm.log" bash -c '[ -n "$WM" ] && { "$WM" $WM_ARGS >"$WM_LOG" 2>&1 & sleep 1; }; exec "$0" "$@"' \
   "$WORK/app/zen/zen" --marionette -profile "$PROFILE" >"$WORK/zen.log" 2>&1 &
 ZEN_PID=$!
 trap 'kill -- -$ZEN_PID 2>/dev/null || true' EXIT
@@ -85,6 +85,7 @@ status=0
 node "${SMOKE:-$REPO/tests/zen/smoke.mjs}" --port "$PORT" "$@" || status=$?
 if [ "$status" != 0 ]; then
   echo "--- Zen's log (last 40 lines)"; tail -40 "$WORK/zen.log"
+  echo "--- window manager ($WM) log"; tail -20 "$WORK/wm.log" 2>/dev/null || true
   echo "--- tab undo log"; tail -30 "$PROFILE/almost-arc-undo-debug.log" 2>/dev/null || true
 fi
 exit "$status"
