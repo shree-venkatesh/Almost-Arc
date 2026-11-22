@@ -106,7 +106,7 @@ cd Almost-Arc
 
 It finds Zen through the `zen` command or the usual install folders (Zen's tarball install, `~/.local/share/zen`, `/opt`, distro packages). Zen from Flatpak can't load the script loader (its app folder is read-only): use Sine there.
 
-PiP on Linux: a playing video pops out when you switch tabs or minimize Zen (not when another window covers it; Firefox can't tell on Linux). On Wayland you drag the PiP like any window; the swipe and fling to a corner need X11, since Wayland doesn't let apps move their windows. To get them (and a PiP that stays on top) on a Wayland desktop, start Zen with `GDK_BACKEND=x11 MOZ_ENABLE_WAYLAND=0`. Resize the PiP from its edges or corners; it snaps to the video's shape when you let go (GNOME doesn't keep it).
+PiP on Linux: a playing video pops out when you switch tabs or minimize Zen (not when another window covers it; Firefox can't tell on Linux). On Wayland you drag the PiP like any window; the swipe and fling to a corner need X11, since Wayland doesn't let apps move their windows. To get them (and a PiP that stays on top) on a Wayland desktop, start Zen with `GDK_BACKEND=x11 MOZ_ENABLE_WAYLAND=0`. Resize the PiP by grabbing a finger-width inside its edge or corner (the cursor shows a resize arrow); it snaps to the video's shape when you let go. Right at the very edge, GNOME in X11 mode freezes the PiP until you let go.
 
 For a non-default profile or install location:
 
