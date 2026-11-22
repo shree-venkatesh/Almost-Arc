@@ -35,6 +35,8 @@ concurrency:
 
 jobs:
   pkg:
+    # Linux betas (vX.Y.Z-linux.N, branch linux) get no macOS installer
+    if: ${{ !contains(github.event.release.tag_name || inputs.tag || '', 'linux') }}
     runs-on: macos-latest
     permissions:
       contents: write   # attach the .pkg to the release
@@ -124,6 +126,8 @@ jobs:
         run: gh release upload "$TAG" "Almost-Arc-for-Zen-$VERSION.pkg" --clobber
 
   terminal:
+    # Linux betas (vX.Y.Z-linux.N, branch linux) get no macOS installer
+    if: ${{ !contains(github.event.release.tag_name || inputs.tag || '', 'linux') }}
     runs-on: macos-latest
     permissions:
       contents: read

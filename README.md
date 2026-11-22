@@ -106,6 +106,8 @@ cd Almost-Arc
 
 It finds Zen through the `zen` command or the usual install folders (Zen's tarball install, `/opt`, distro packages). Zen from Flatpak can't load the script loader (its app folder is read-only): use Sine there.
 
+PiP on Linux: a playing video pops out when you switch tabs or minimize Zen (not when another window covers it; Firefox can't tell on Linux). On Wayland you drag the PiP like any window; the swipe and fling to a corner need X11, since Wayland doesn't let apps move their windows.
+
 For a non-default profile or install location:
 
 ```bash
