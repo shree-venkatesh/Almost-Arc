@@ -16,7 +16,7 @@ case "$(uname)" in
           # ~/.tarball-installations/zen) and distro packages.
           if [ -z "$ZEN_APP" ]; then
             for c in "$(command -v zen 2>/dev/null)" "$(command -v zen-browser 2>/dev/null)" "$HOME/.local/bin/zen" \
-                     "$HOME/.tarball-installations/zen/zen" /opt/zen/zen /opt/zen-browser/zen /opt/zen-browser-bin/zen \
+                     "$HOME/.tarball-installations/zen/zen" "$HOME/.local/share/zen/zen" /opt/zen/zen /opt/zen-browser/zen /opt/zen-browser-bin/zen \
                      /usr/lib/zen-browser/zen /usr/lib/zen/zen /usr/lib64/zen-browser/zen; do
               [ -n "$c" ] && [ -e "$c" ] || continue
               d="$(dirname "$(readlink -f "$c")")"
