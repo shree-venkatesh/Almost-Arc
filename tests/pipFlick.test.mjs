@@ -352,6 +352,14 @@ describe("Wayland", () => {
     assert.equal(env.moves.length, 0);
     assert.equal(env.window.__arcPipFlick, "off: wayland");
   });
+  test("XWayland (Zen run with GDK_BACKEND=x11 on a Wayland desktop) keeps them: windows can be moved there", async () => {
+    const env = load({}, { protocol: "xwayland" });
+    assert.ok(env.sheets.some(([css]) => css.includes("no-drag")));
+    assert.equal(env.window.__arcPipFlick, true);
+    for (let i = 0; i < 5; i++) await env.scroll(-12, 0);
+    env.settle();
+    assert.ok(env.moves.length > 0, "the swipe should move it");
+  });
   test("X11 keeps the swipe and the script's drag", () => {
     const env = load({}, { protocol: "x11" });
     assert.ok(env.sheets.some(([css]) => css.includes("no-drag")));

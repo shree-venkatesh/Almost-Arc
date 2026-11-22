@@ -26,7 +26,8 @@
   // dragging works as usual, no swipe or fling.
   try {
     const gfx = Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo);
-    if (/wayland/i.test(gfx.windowProtocol || "")) { window.__arcPipFlick = "off: wayland"; return; }
+    // "wayland" only: on "xwayland" (Zen run with GDK_BACKEND=x11) windows can be moved
+    if (/^wayland/i.test(gfx.windowProtocol || "")) { window.__arcPipFlick = "off: wayland"; return; }
   } catch (e) {}
 
   const TRIGGER = 40;   // swipe distance (px of scroll) before it moves
