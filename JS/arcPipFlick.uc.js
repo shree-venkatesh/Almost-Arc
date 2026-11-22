@@ -199,7 +199,11 @@
   }
   function edgeAt(e) {
     if (!LINUX) return "";
-    const x = e.screenX - window.screenX, y = e.screenY - window.screenY, w = window.outerWidth, h = window.outerHeight;
+    // In the window's own CSS px (clientX / innerWidth): with fractional scaling in
+    // X11 mode (owner: 125%) screen and window coordinates may not share a unit,
+    // so screenX - window.screenX misplaced every press (no edge press was ever seen).
+    const x = e.clientX ?? (e.screenX - window.screenX), y = e.clientY ?? (e.screenY - window.screenY);
+    const w = window.innerWidth || window.outerWidth, h = window.innerHeight || window.outerHeight;
     if (x < 0 || y < 0 || x > w || y > h) return "";
     return (y < EDGE ? "n" : y > h - EDGE ? "s" : "") + (x < EDGE ? "w" : x > w - EDGE ? "e" : "");
   }
@@ -305,7 +309,8 @@
     // froze until you let go (owner, 2026-11-21: "lost pointer capture" ~0.1 s after
     // each press, nothing moved).
     if (!LINUX) try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
-    if (DEBUG) log(`drag: press on ${where(e.target)} at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
+    if (DEBUG) log(`drag: press on ${where(e.target)} at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}` +
+                   ` (pointer ${Math.round(e.clientX)},${Math.round(e.clientY)} in ${window.innerWidth}x${window.innerHeight}, screen ${Math.round(e.screenX)},${Math.round(e.screenY)}, scale ${window.devicePixelRatio})`);
   }
   function onMove(e) {
     if (resize) { if (e.pointerId === resize.id) resizeTo(e); return; }

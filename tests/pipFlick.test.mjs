@@ -36,6 +36,7 @@ function load(prefs = {}, { protocol = "x11", os = "Darwin" } = {}) {
   const window = {
     screen: SCREEN,
     outerWidth: W, outerHeight: H, screenX: 556, screenY: 300,   // middle of the screen
+    get innerWidth() { return this.outerWidth; }, get innerHeight() { return this.outerHeight; },
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     moveTo(x, y) { window.screenX = x; window.screenY = y; moves.push([x, y]); },
     resizeTo(w, h) { window.outerWidth = w; window.outerHeight = h; resizes.push([w, h]); listeners.resize?.forEach(fn => fn({ type: "resize" })); },
@@ -95,7 +96,8 @@ function load(prefs = {}, { protocol = "x11", os = "Darwin" } = {}) {
   const VIDEO = { closest: () => null };                           // the video area (#controls)
   const BUTTON = { closest: sel => (sel.includes("button") ? BUTTON : null) };
   const pointer = (type, x, y, extra = {}) =>
-    fire(type, { type, pointerId: 1, button: 0, screenX: x, screenY: y, target: VIDEO, metaKey: false, ...extra });
+    fire(type, { type, pointerId: 1, button: 0, screenX: x, screenY: y, clientX: x - window.screenX, clientY: y - window.screenY,
+                 target: VIDEO, metaKey: false, ...extra });
 
   // Mouse drag: press 100 px right / 50 px below the window's top left, move so the
   // window should be at each point of `path` (one point per 16 ms frame), optionally
@@ -402,6 +404,15 @@ describe("Linux: resizing from the edges (the desktop gives the PiP no resize bo
     env.edgeDrag(W / 2, 2, steps(0, 9));
     assert.equal(env.window.outerHeight, H - 45);
     assert.equal(env.window.screenY + env.window.outerHeight, 300 + H);
+  });
+  test("125% scaling: screen coordinates in another unit don't matter, the press is placed in the window", () => {
+    const env = linux();
+    // a press 5 px in from the right edge, but its screen coordinates scaled by 1.25
+    env.pointer("pointerdown", (556 + W - 5) * 1.25, (300 + 100) * 1.25, { clientX: W - 5, clientY: 100 });
+    env.pointer("pointermove", (556 + W + 45) * 1.25, (300 + 100) * 1.25, { clientX: W + 45, clientY: 100 });
+    env.pointer("pointerup", (556 + W + 45) * 1.25, (300 + 100) * 1.25, { clientX: W + 45, clientY: 100 });
+    assert.ok(env.window.outerWidth > W, "resized: " + env.window.outerWidth);
+    assert.equal(env.moves.length, 0, "not dragged");
   });
   test("never smaller than 200 px wide", () => {
     const env = linux();
