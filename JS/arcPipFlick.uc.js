@@ -110,7 +110,7 @@
       }
       if (k.fixes++ >= 3) { log("size: gave up restoring"); keep = null; return; }
       log(`size: changed to ${window.outerWidth}x${window.outerHeight} after letting go, restoring ${k.w}x${k.h}`);
-      window.resizeTo(k.w, k.h);
+      own(); window.resizeTo(k.w, k.h);
       window.moveTo(...onScreenSpot(k.w, k.h));
     };
     k.timer = requestAnimationFrame(tick);
@@ -219,8 +219,59 @@
     h = Math.round(w / ratio);
     const x = r.edge.includes("w") ? r.wx + r.w - w : r.wx;
     const y = r.edge.includes("n") ? r.wy + r.h - h : r.wy;
-    if (w !== window.outerWidth || h !== window.outerHeight) window.resizeTo(w, h);
+    if (w !== window.outerWidth || h !== window.outerHeight) { own(); window.resizeTo(w, h); }
     if (x !== window.screenX || y !== window.screenY) window.moveTo(x, y);
+  }
+
+  // ---- Keeping the video's shape (Linux) ----
+  // macOS keeps the PiP at the video's aspect ratio while you resize it; GTK
+  // desktops don't, so the window took any shape and the video got black bars
+  // (owner's GNOME log, 2026-11-21: every resize came from the desktop, none from
+  // the edge band). Once a resize by anything else has been still for SHAPE_MS,
+  // the window is snapped back to the video's shape, following the side you
+  // changed more. The shape: the window's at open, then each size Firefox gives it
+  // for a new video (resizeToVideo).
+  const SHAPE_MS = 250;
+  let ratio = window.outerWidth / window.outerHeight || 16 / 9;
+  let ownUntil = 0;          // our own resizes (and Firefox's resizeToVideo) until then
+  let shapeFrom = null, shapeAt = 0, shapeTimer = 0;
+  const own = (ms = 300) => { ownUntil = performance.now() + ms; };
+  if (LINUX && typeof window.resizeToVideo === "function") {
+    const orig = window.resizeToVideo;
+    window.resizeToVideo = function (rect) {
+      if (rect?.width > 0 && rect?.height > 0) ratio = rect.width / rect.height;
+      own(500);
+      return orig.apply(this, arguments);
+    };
+  }
+  let lastSize = [window.outerWidth, window.outerHeight];
+  function onShape() {
+    const before = lastSize;
+    lastSize = [window.outerWidth, window.outerHeight];
+    if (!LINUX || resize || document.fullscreenElement || performance.now() < ownUntil) { shapeFrom = null; return; }
+    if (!shapeFrom) shapeFrom = before;
+    shapeAt = performance.now();
+    if (shapeTimer) return;
+    const tick = now => {
+      if (now - shapeAt < SHAPE_MS) { shapeTimer = requestAnimationFrame(tick); return; }
+      shapeTimer = 0;
+      const from = shapeFrom; shapeFrom = null;
+      if (!from || resize || drag) return;
+      let w = window.outerWidth, h = window.outerHeight;
+      if (Math.abs(w / h - ratio) < 0.02) return;
+      if (Math.abs(w - from[0]) >= Math.abs(h - from[1]) * ratio) h = Math.round(w / ratio);
+      else w = Math.round(h * ratio);
+      // too big for the screen: fit it
+      const s = window.screen;
+      if (s?.availWidth && w > s.availWidth) { w = s.availWidth; h = Math.round(w / ratio); }
+      if (s?.availHeight && h > s.availHeight) { h = s.availHeight; w = Math.round(h * ratio); }
+      w = Math.max(MIN_W, w); h = Math.round(w / ratio);
+      log(`shape: ${window.outerWidth}x${window.outerHeight} -> ${w}x${h} (video ${ratio.toFixed(3)})`);
+      own();
+      window.resizeTo(w, h);
+      lastSize = [w, h];
+    };
+    shapeTimer = requestAnimationFrame(tick);
   }
 
   // controls keep their clicks; anywhere else on the video drags the window
@@ -313,6 +364,7 @@
   window.addEventListener("pointerup", onUp, true);
   window.addEventListener("pointercancel", onUp, true);
   window.addEventListener("resize", onResizeGuard);
+  window.addEventListener("resize", onShape);
   if (DEBUG) {
     window.addEventListener("lostpointercapture", () => log(`drag: lost pointer capture${drag ? " while dragging" : ""}`), true);
     let size = `${window.outerWidth}x${window.outerHeight}`;

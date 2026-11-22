@@ -354,6 +354,17 @@ check("PiP: dragging its corner resizes it, keeping the video's shape (Linux)", 
   return { before, after };
 `);
 
+check("PiP: stretched by the desktop, it snaps back to the video's shape (Linux)", PIP + `
+  const w = pipWin() || await pipOpen(await openVideo());
+  await sleep(500);
+  const shape = w.outerWidth / w.outerHeight;
+  w.resizeTo(w.outerWidth + 160, w.outerHeight);     // like GNOME's own edge resize: only wider
+  await sleep(1000);
+  const now = w.outerWidth / w.outerHeight;
+  assert(Math.abs(now - shape) < 0.03, "shape not kept: " + JSON.stringify({ shape, now, size: [w.outerWidth, w.outerHeight] }));
+  return { shape: +shape.toFixed(3), size: [w.outerWidth, w.outerHeight] };
+`);
+
 check("PiP: Back to Tab closes it; switching tabs or minimizing Zen pops a video out", PIP + `
   const w = pipWin() || await pipOpen(await openVideo());
   w.document.getElementById("unpip").click();

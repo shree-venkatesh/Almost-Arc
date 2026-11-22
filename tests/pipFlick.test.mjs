@@ -38,7 +38,9 @@ function load(prefs = {}, { protocol = "x11", os = "Darwin" } = {}) {
     outerWidth: W, outerHeight: H, screenX: 556, screenY: 300,   // middle of the screen
     addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
     moveTo(x, y) { window.screenX = x; window.screenY = y; moves.push([x, y]); },
-    resizeTo(w, h) { window.outerWidth = w; window.outerHeight = h; resizes.push([w, h]); },
+    resizeTo(w, h) { window.outerWidth = w; window.outerHeight = h; resizes.push([w, h]); listeners.resize?.forEach(fn => fn({ type: "resize" })); },
+    // Firefox's player.js: sizes the window for a new video
+    resizeToVideo(rect) { window.resizeTo(rect.width, rect.height); },
     windowUtils: { AGENT_SHEET: 0, USER_SHEET: 1, AUTHOR_SHEET: 2, loadSheetUsingURIString: (uri, type) => sheets.push([decodeURIComponent(uri), type]) },
   };
   // elements whose inline style the script sets: selector -> { prop: [value, priority] }
@@ -48,6 +50,7 @@ function load(prefs = {}, { protocol = "x11", os = "Darwin" } = {}) {
     getPropertyValue: k => inline[sel]?.[k]?.[0] ?? "",
   } });
   const document = {
+    fullscreenElement: null,
     documentElement: { setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id),
       attrs: {}, getAttribute(k) { return this.attrs[k] ?? null; }, setAttribute(k, v) { this.attrs[k] = String(v); },
       removeAttribute(k) { delete this.attrs[k]; } },
@@ -437,6 +440,49 @@ describe("Linux: resizing from the edges (the desktop gives the PiP no resize bo
     assert.equal(env.resizes.length, 0);
     assert.ok(env.moves.length > 0);
     assert.ok(!env.sheets.some(([css]) => css.includes("resize")));
+  });
+});
+
+describe("Linux: the PiP keeps the video's shape after the desktop resizes it", () => {
+  const linux = () => load({}, { os: "Linux" });
+  const wait = env => { for (let i = 0; i < 30; i++) env.frame(); };
+  test("pulled wider by the desktop: the height follows once you stop", () => {
+    const env = linux();
+    for (const w of [450, 520, 600]) { env.shrink(w, H); env.frame(); }
+    wait(env);
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [600, Math.round(600 * H / W)]);
+  });
+  test("pulled taller: the width follows", () => {
+    const env = linux();
+    env.shrink(W, 400); wait(env);
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [Math.round(400 * W / H), Math.round(Math.round(400 * W / H) * H / W)]);
+  });
+  test("no snapping while it's still being resized", () => {
+    const env = linux();
+    env.shrink(500, H); env.frame();
+    assert.equal(env.window.outerHeight, H);
+    assert.equal(env.resizes.length, 0);
+  });
+  test("a new video's size from Firefox becomes the shape, and isn't snapped itself", () => {
+    const env = linux();
+    env.window.resizeToVideo({ left: 0, top: 0, width: 300, height: 300 });   // a square video
+    wait(env);
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [300, 300]);
+    env.frame(400);
+    env.shrink(500, 300); wait(env);
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [500, 500]);
+  });
+  test("Almost Arc's own edge resize isn't snapped again", () => {
+    const env = linux();
+    env.edgeDrag(W - 18, H - 18, [[16, 9], [16, 9]]);
+    const n = env.resizes.length;
+    wait(env);
+    assert.equal(env.resizes.length, n);
+  });
+  test("macOS keeps the shape itself: nothing snapped", () => {
+    const env = load();
+    env.shrink(600, H); wait(env);
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [600, H]);
   });
 });
 
