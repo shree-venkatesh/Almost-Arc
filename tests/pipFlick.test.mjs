@@ -24,7 +24,7 @@ const W = 400, H = 225, M = 16;
 const LEFT = M, RIGHT = 1512 - W - M, TOP = 25 + M, BOTTOM = 25 + 920 - H - M;
 const FRAME = 16;   // ms per animation frame
 
-function load(prefs = {}, { protocol = "x11" } = {}) {
+function load(prefs = {}, { protocol = "x11", os = "Darwin" } = {}) {
   const listeners = {};
   const moves = [];
   const sheets = [];
@@ -48,13 +48,15 @@ function load(prefs = {}, { protocol = "x11" } = {}) {
     getPropertyValue: k => inline[sel]?.[k]?.[0] ?? "",
   } });
   const document = {
-    documentElement: { setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id) },
+    documentElement: { setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id),
+      attrs: {}, getAttribute(k) { return this.attrs[k] ?? null; }, setAttribute(k, v) { this.attrs[k] = String(v); },
+      removeAttribute(k) { delete this.attrs[k]; } },
     querySelectorAll: sel => [el(sel)],
     getElementById: id => el("#" + id),
   };
   const context = {
     window, document, console,
-    Services: { prefs: {
+    Services: { appinfo: { OS: os }, prefs: {
       getDefaultBranch: () => ({ setBoolPref() {} }),
       getBoolPref: (k, d) => (k in prefs ? prefs[k] : d),
     } },
@@ -107,7 +109,15 @@ function load(prefs = {}, { protocol = "x11" } = {}) {
   // something outside (macOS) resizes the window
   const shrink = (w, h) => { window.outerWidth = w; window.outerHeight = h; fire("resize", { type: "resize" }); };
 
-  return { window, moves, resizes, shrink, sheets, inline, captured, fire, pointer, BUTTON, scroll, drag, frame, settle,
+  // press at window spot (x, y), move the pointer by each [dx, dy] of `steps`, let go
+  function edgeDrag(x, y, steps) {
+    let p = [window.screenX + x, window.screenY + y];
+    pointer("pointerdown", ...p);
+    for (const [dx, dy] of steps) { frame(); p = [p[0] + dx, p[1] + dy]; pointer("pointermove", ...p); }
+    pointer("pointerup", ...p);
+  }
+
+  return { window, document, moves, resizes, shrink, sheets, inline, captured, fire, pointer, BUTTON, scroll, drag, edgeDrag, frame, settle,
            pos: () => [window.screenX, window.screenY] };
 }
 
@@ -363,6 +373,70 @@ describe("Wayland", () => {
   test("X11 keeps the swipe and the script's drag", () => {
     const env = load({}, { protocol: "x11" });
     assert.ok(env.sheets.some(([css]) => css.includes("no-drag")));
+  });
+});
+
+describe("Linux: resizing from the edges (the desktop gives the PiP no resize border)", () => {
+  const linux = () => load({}, { os: "Linux" });
+  const steps = (dx, dy, n = 5) => Array.from({ length: n }, () => [dx, dy]);
+  test("bottom right corner pulled out: bigger, same shape, top left stays", () => {
+    const env = linux();
+    env.edgeDrag(W - 3, H - 3, steps(16, 9));
+    const [w, h] = [env.window.outerWidth, env.window.outerHeight];
+    assert.equal(w, W + 80);
+    assert.ok(Math.abs(w / h - W / H) < 0.01, `shape kept: ${w}x${h}`);
+    assert.deepEqual(env.pos(), [556, 300]);
+  });
+  test("left edge pulled left: wider and taller, its right edge stays put", () => {
+    const env = linux();
+    env.edgeDrag(2, H / 2, steps(-10, 0));
+    assert.equal(env.window.outerWidth, W + 50);
+    assert.equal(env.window.screenX + env.window.outerWidth, 556 + W);
+    assert.equal(env.window.screenY, 300);
+  });
+  test("top edge pulled down: smaller, its bottom edge stays put", () => {
+    const env = linux();
+    env.edgeDrag(W / 2, 2, steps(0, 9));
+    assert.equal(env.window.outerHeight, H - 45);
+    assert.equal(env.window.screenY + env.window.outerHeight, 300 + H);
+  });
+  test("never smaller than 200 px wide", () => {
+    const env = linux();
+    env.edgeDrag(W - 2, H - 2, steps(-100, -60));
+    assert.equal(env.window.outerWidth, 200);
+  });
+  test("a button near the edge (top bar, volume) keeps its click: no resize, no arrow", () => {
+    const env = linux(), root = env.document.documentElement;
+    env.pointer("pointermove", 556 + W - 10, 300 + 10, { target: env.BUTTON });
+    assert.equal(root.getAttribute("arc-resize"), null);
+    env.pointer("pointerdown", 556 + W - 10, 300 + 10, { target: env.BUTTON });
+    env.pointer("pointermove", 556 + W + 30, 300 - 20, { target: env.BUTTON });
+    env.pointer("pointerup", 556 + W + 30, 300 - 20, { target: env.BUTTON });
+    assert.equal(env.resizes.length, 0);
+    assert.equal(env.moves.length, 0);
+  });
+  test("a press inside still drags the window, no resize", () => {
+    const env = linux();
+    env.drag(line(556, 300, 3, 0, 8), { holdMs: 200 });
+    assert.equal(env.resizes.length, 0);
+    assert.deepEqual(env.pos(), [580, 300]);
+  });
+  test("the cursor shows a resize arrow near an edge, and goes back inside", () => {
+    const env = linux(), root = env.document.documentElement;
+    env.pointer("pointermove", 556 + W - 2, 300 + H - 2);
+    assert.equal(root.getAttribute("arc-resize"), "nwse");
+    env.pointer("pointermove", 556 + 4, 300 + 100);
+    assert.equal(root.getAttribute("arc-resize"), "ew");
+    env.pointer("pointermove", 556 + 200, 300 + 100);
+    assert.equal(root.getAttribute("arc-resize"), null);
+    assert.ok(env.sheets.some(([css]) => css.includes("nwse-resize")));
+  });
+  test("macOS: no edge resizing (macOS resizes it itself); an edge press drags as before", () => {
+    const env = load();
+    env.edgeDrag(W - 3, H - 3, steps(16, 9));
+    assert.equal(env.resizes.length, 0);
+    assert.ok(env.moves.length > 0);
+    assert.ok(!env.sheets.some(([css]) => css.includes("resize")));
   });
 });
 

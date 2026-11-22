@@ -332,6 +332,28 @@ check("PiP: drag it and let go fast: it's flung into a corner", PIP + `
   return { before, after };
 `);
 
+check("PiP: dragging its corner resizes it, keeping the video's shape (Linux)", PIP + `
+  const w = pipWin() || await pipOpen(await openVideo());
+  const s = w.screen;
+  w.moveTo(s.availLeft + 200, s.availTop + 150);
+  await sleep(500);
+  const before = [w.outerWidth, w.outerHeight], at = [w.screenX, w.screenY];
+  // 20 px inside the bottom right corner: Firefox's own resize border takes the outer ~15 px
+  const x0 = w.outerWidth - 20, y0 = w.outerHeight - 20;
+  await mouse(w, "mousemove", x0, y0);
+  const cursor = w.document.documentElement.getAttribute("arc-resize");
+  await mouse(w, "mousedown", x0, y0);
+  for (let i = 1; i <= 5; i++) await mouse(w, "mousemove", x0 + i * 24, y0 + i * 14);
+  await mouse(w, "mouseup", x0 + 120, y0 + 70);
+  await sleep(800);
+  const after = [w.outerWidth, w.outerHeight];
+  assert(cursor === "nwse", "no resize cursor at the corner: " + cursor);
+  assert(after[0] > before[0] + 60, "didn't get bigger: " + JSON.stringify({ before, after }));
+  assert(Math.abs(after[0] / after[1] - before[0] / before[1]) < 0.03, "shape changed: " + JSON.stringify({ before, after }));
+  assert(Math.abs(w.screenX - at[0]) < 4 && Math.abs(w.screenY - at[1]) < 4, "top left corner moved: " + JSON.stringify({ at, now: [w.screenX, w.screenY] }));
+  return { before, after };
+`);
+
 check("PiP: Back to Tab closes it; switching tabs or minimizing Zen pops a video out", PIP + `
   const w = pipWin() || await pipOpen(await openVideo());
   w.document.getElementById("unpip").click();

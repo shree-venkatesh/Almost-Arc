@@ -177,12 +177,69 @@
     if (DEBUG) log("no native drag: user sheet loaded");
   } catch (e) { log(`no native drag: sheet failed: ${e}`); }
 
+  // ---- Resizing from the edges (Linux) ----
+  // The PiP has no title bar or frame. macOS still resizes it from its edges; on
+  // Linux in X11 / XWayland the desktop gives such a window no resize border
+  // (owner, GNOME, 2026-11-21: resizing did nothing). Firefox's own resize border
+  // takes the outer ~15 px before any script hears of it (it worked under twm, not
+  // on GNOME in X11 mode), so a press within EDGE px of an edge or corner (in
+  // practice the band just inside Firefox's) resizes it here, keeping the video's
+  // shape; the cursor shows it.
+  const LINUX = (() => { try { return Services.appinfo.OS === "Linux"; } catch (e) { return false; } })();
+  const EDGE = 24;       // px from the window's edge that resize
+  const MIN_W = 200;     // px: smallest width
+  const CURSORS = { n: "ns", s: "ns", e: "ew", w: "ew", nw: "nwse", se: "nwse", ne: "nesw", sw: "nesw" };
+  let resize = null;     // { id, edge, px, py, wx, wy, w, h }
+  if (LINUX) {
+    try {
+      window.windowUtils.loadSheetUsingURIString("data:text/css;charset=utf-8," + encodeURIComponent(
+        ["ns", "ew", "nwse", "nesw"].map(c => `:root[arc-resize="${c}"], :root[arc-resize="${c}"] * { cursor: ${c}-resize !important; }`).join("\n")),
+        window.windowUtils.USER_SHEET);
+    } catch (e) { log(`resize cursors: sheet failed: ${e}`); }
+  }
+  function edgeAt(e) {
+    if (!LINUX) return "";
+    const x = e.screenX - window.screenX, y = e.screenY - window.screenY, w = window.outerWidth, h = window.outerHeight;
+    if (x < 0 || y < 0 || x > w || y > h) return "";
+    return (y < EDGE ? "n" : y > h - EDGE ? "s" : "") + (x < EDGE ? "w" : x > w - EDGE ? "e" : "");
+  }
+  function showCursor(edge) {
+    const root = document.documentElement, c = CURSORS[edge] || "";
+    if ((root.getAttribute?.("arc-resize") || "") === c) return;
+    if (c) root.setAttribute?.("arc-resize", c); else root.removeAttribute?.("arc-resize");
+  }
+  function resizeTo(e) {
+    const r = resize, ratio = r.w / r.h, dx = e.screenX - r.px, dy = e.screenY - r.py;
+    let w = r.w + (r.edge.includes("e") ? dx : r.edge.includes("w") ? -dx : 0);
+    let h = r.h + (r.edge.includes("s") ? dy : r.edge.includes("n") ? -dy : 0);
+    // keep the video's shape: a side edge sets the width, top/bottom the height,
+    // a corner whichever you pulled further
+    if (!/[ew]/.test(r.edge) || (/[ns]/.test(r.edge) && Math.abs(h - r.h) * ratio > Math.abs(w - r.w))) w = h * ratio;
+    w = Math.max(MIN_W, Math.round(w));
+    h = Math.round(w / ratio);
+    const x = r.edge.includes("w") ? r.wx + r.w - w : r.wx;
+    const y = r.edge.includes("n") ? r.wy + r.h - h : r.wy;
+    if (w !== window.outerWidth || h !== window.outerHeight) window.resizeTo(w, h);
+    if (x !== window.screenX || y !== window.screenY) window.moveTo(x, y);
+  }
+
   // controls keep their clicks; anywhere else on the video drags the window
   const INTERACTIVE = "button, input, select, textarea, a, label, [role], #scrubber, .control-item";
   let drag = null;   // { id, px, py, wx, wy, moved, samples: [[time, px, py]] }
   const where = el => el ? `${el.localName}${el.id ? "#" + el.id : ""}` : "?";
   function onDown(e) {
-    if (e.button !== 0 || drag || e.target?.closest?.(INTERACTIVE)) return;
+    if (e.button !== 0 || drag || resize || e.target?.closest?.(INTERACTIVE)) return;   // controls keep their clicks
+    const edge = edgeAt(e);
+    if (edge) {
+      resize = { id: e.pointerId, edge, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
+                 w: window.outerWidth, h: window.outerHeight };
+      if (anim) { cancelAnimationFrame(anim); anim = 0; }
+      if (keep?.timer) cancelAnimationFrame(keep.timer);
+      keep = null;
+      try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
+      log(`resize: from ${edge} at ${window.outerWidth}x${window.outerHeight}`);
+      return;
+    }
     drag = { id: e.pointerId, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
              w: window.outerWidth, h: window.outerHeight,
              moved: false, last: null, samples: [[performance.now(), e.screenX, e.screenY]] };
@@ -192,7 +249,9 @@
     if (DEBUG) log(`drag: press on ${where(e.target)} at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
   }
   function onMove(e) {
-    if (!drag || e.pointerId !== drag.id) return;
+    if (resize) { if (e.pointerId === resize.id) resizeTo(e); return; }
+    if (!drag) { if (LINUX) showCursor(e.target?.closest?.(INTERACTIVE) ? "" : edgeAt(e)); return; }
+    if (e.pointerId !== drag.id) return;
     const dx = e.screenX - drag.px, dy = e.screenY - drag.py;
     // something else moved the window since our last move (macOS's own drag, a constraint)?
     if (DEBUG && drag.last && (Math.abs(window.screenX - drag.last[0]) > 1 || Math.abs(window.screenY - drag.last[1]) > 1))
@@ -211,6 +270,12 @@
     window.moveTo(...drag.last);
   }
   function onUp(e) {
+    if (resize && e.pointerId === resize.id) {
+      resize = null;
+      try { document.documentElement.releasePointerCapture(e.pointerId); } catch (err) {}
+      log(`resize: now ${window.outerWidth}x${window.outerHeight}`);
+      return;
+    }
     if (!drag || e.pointerId !== drag.id) return;
     const d = drag;
     drag = null;
