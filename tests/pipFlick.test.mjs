@@ -486,6 +486,43 @@ describe("Linux: the PiP keeps the video's shape after the desktop resizes it", 
   });
 });
 
+describe("Linux: a press near the edge doesn't fight GNOME's own resize", () => {
+  const linux = () => load({}, { os: "Linux" });
+  test("no pointer grab on the press, only once it's a drag", () => {
+    const env = linux();
+    env.pointer("pointerdown", 656, 350);
+    assert.equal(env.captured.size, 0);
+    env.pointer("pointermove", 670, 350);
+    assert.ok(env.captured.has(1));
+    env.pointer("pointerup", 670, 350);
+    assert.equal(env.captured.size, 0);
+  });
+  test("the desktop resizes it from a press: the press is dropped, the shape still snaps", () => {
+    const env = linux();
+    env.pointer("pointerdown", 556 + 200, 300 + 100);
+    for (const w of [450, 520, 600]) { env.shrink(w, H); env.frame(); }
+    for (let i = 0; i < 30; i++) env.frame();
+    assert.deepEqual([env.window.outerWidth, env.window.outerHeight], [600, Math.round(600 * H / W)]);
+    // the pointer comes back with the button up: no drag, nothing moves
+    env.pointer("pointermove", 556 + 300, 300 + 150, { buttons: 0 });
+    assert.equal(env.moves.length, 0);
+  });
+  test("a new press after one the desktop took starts fresh", () => {
+    const env = linux();
+    env.pointer("pointerdown", 656, 350);          // GNOME took this one; no pointerup came
+    env.drag(line(556, 300, 30, 0, 8), { holdMs: 200 });
+    assert.deepEqual(env.pos(), [796, 300]);
+  });
+  test("a pending press with the button already up is dropped", () => {
+    const env = linux();
+    env.pointer("pointerdown", 656, 350);
+    env.pointer("pointermove", 657, 350, { buttons: 1 });   // a real mouse reports the held button
+    env.pointer("pointermove", 700, 380, { buttons: 0 });
+    env.pointer("pointermove", 760, 420, { buttons: 0 });
+    assert.equal(env.moves.length, 0);
+  });
+});
+
 // From the owner's log (1.2.7): let go with the cursor at the right screen edge and the
 // window mostly past it; as it slid back, macOS shrank it frame by frame to 33 x 19
 // at that edge.

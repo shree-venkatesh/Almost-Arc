@@ -249,6 +249,9 @@
     const before = lastSize;
     lastSize = [window.outerWidth, window.outerHeight];
     if (!LINUX || resize || document.fullscreenElement || performance.now() < ownUntil) { shapeFrom = null; return; }
+    // resized by the desktop from a press that hasn't become a drag: it's the
+    // desktop's resize, not ours to follow
+    if (drag && !drag.moved) { log("drag: the desktop is resizing it, stepping aside"); drag = null; }
     if (!shapeFrom) shapeFrom = before;
     shapeAt = performance.now();
     if (shapeTimer) return;
@@ -256,7 +259,7 @@
       if (now - shapeAt < SHAPE_MS) { shapeTimer = requestAnimationFrame(tick); return; }
       shapeTimer = 0;
       const from = shapeFrom; shapeFrom = null;
-      if (!from || resize || drag) return;
+      if (!from || resize || drag?.moved) return;
       let w = window.outerWidth, h = window.outerHeight;
       if (Math.abs(w / h - ratio) < 0.02) return;
       if (Math.abs(w - from[0]) >= Math.abs(h - from[1]) * ratio) h = Math.round(w / ratio);
@@ -277,9 +280,10 @@
   // controls keep their clicks; anywhere else on the video drags the window
   const INTERACTIVE = "button, input, select, textarea, a, label, [role], #scrubber, .control-item";
   let drag = null;   // { id, px, py, wx, wy, moved, samples: [[time, px, py]] }
+  let seenButtons = false;
   const where = el => el ? `${el.localName}${el.id ? "#" + el.id : ""}` : "?";
   function onDown(e) {
-    if (e.button !== 0 || drag || resize || e.target?.closest?.(INTERACTIVE)) return;   // controls keep their clicks
+    if (e.button !== 0 || drag?.moved || resize || e.target?.closest?.(INTERACTIVE)) return;   // controls keep their clicks
     const edge = edgeAt(e);
     if (edge) {
       resize = { id: e.pointerId, edge, px: e.screenX, py: e.screenY, wx: window.screenX, wy: window.screenY,
@@ -296,13 +300,21 @@
              moved: false, last: null, samples: [[performance.now(), e.screenX, e.screenY]] };
     if (keep?.timer) cancelAnimationFrame(keep.timer);
     keep = null;
-    try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
+    // Linux: take the pointer only once it's a drag. GNOME starts its own resize from
+    // a press near the edge; holding the pointer from the press fought it and the PiP
+    // froze until you let go (owner, 2026-11-21: "lost pointer capture" ~0.1 s after
+    // each press, nothing moved).
+    if (!LINUX) try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
     if (DEBUG) log(`drag: press on ${where(e.target)} at window ${window.screenX},${window.screenY} ${window.outerWidth}x${window.outerHeight}`);
   }
   function onMove(e) {
     if (resize) { if (e.pointerId === resize.id) resizeTo(e); return; }
     if (!drag) { if (LINUX) showCursor(e.target?.closest?.(INTERACTIVE) ? "" : edgeAt(e)); return; }
     if (e.pointerId !== drag.id) return;
+    // the button is up (the desktop had the pointer, so no pointerup reached us).
+    // Only once moves have reported a held button: synthetic moves (tests) never do.
+    if (e.buttons) seenButtons = true;
+    if (!drag.moved && seenButtons && e.buttons === 0) { drag = null; return; }
     const dx = e.screenX - drag.px, dy = e.screenY - drag.py;
     // something else moved the window since our last move (macOS's own drag, a constraint)?
     if (DEBUG && drag.last && (Math.abs(window.screenX - drag.last[0]) > 1 || Math.abs(window.screenY - drag.last[1]) > 1))
@@ -310,6 +322,7 @@
     if (!drag.moved) {
       if (Math.hypot(dx, dy) < DRAG_MIN) return;
       drag.moved = true;
+      if (LINUX) try { document.documentElement.setPointerCapture(e.pointerId); } catch (err) {}
       if (DEBUG) log("drag: started");
       if (anim) { cancelAnimationFrame(anim); anim = 0; }   // grabbed mid-glide
       drag.wx = window.screenX; drag.wy = window.screenY;   // where it is now, if a glide moved it
