@@ -470,3 +470,73 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     border-top-right-radius: calc(var(--zen-native-inner-radius) / var(--zen-squircle-value)) !important;
   }
 }
+
+/* Saved space themes (arcSavedThemes.uc.js): a row under the preset colors in Zen's
+   space theme picker. Every layout: the picker is the same in all of them. The
+   swatches match Zen's preset dots (26 px circles). */
+#arc-saved-themes {
+  padding: 10px 2px 0;
+  gap: 6px;
+
+  & .arc-saved-themes-head {
+    gap: 6px;
+    min-height: 20px;
+  }
+  & .arc-saved-themes-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0;
+  }
+  & .arc-saved-themes-name {
+    font-size: 12px;
+    margin: 0;
+    opacity: .6;
+  }
+  & .arc-saved-themes-rename {
+    flex: 1;
+    font-size: 12px;
+    margin: 0;
+    padding: 1px 4px;
+  }
+  & .arc-saved-themes-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  & .arc-saved-theme,
+  & .arc-saved-themes-add {
+    appearance: none;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 1px 1px rgba(0, 0, 0, .1);
+    cursor: pointer;
+    transition: transform .1s;
+
+    &:hover { transform: scale(1.05); }
+    &:hover:active { transform: scale(.95); }
+    &:focus-visible { outline: 2px solid var(--focus-outline-color, AccentColor); outline-offset: 2px; }
+  }
+  /* Zen's default theme (no colors) */
+  & .arc-saved-theme[default] {
+    background: linear-gradient(135deg, light-dark(#f2f2f2, #3a3a3a) 0 50%, light-dark(#d6d6d6, #262626) 50% 100%);
+  }
+  & .arc-saved-theme[selected] {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+  & .arc-saved-themes-add {
+    background: transparent;
+    box-shadow: none;
+    border: 1.5px dashed color-mix(in srgb, currentColor 45%, transparent);
+    color: inherit;
+    font-size: 16px;
+    line-height: 1;
+    opacity: .8;
+
+    &:hover { opacity: 1; }
+  }
+}

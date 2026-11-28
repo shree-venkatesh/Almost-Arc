@@ -12,7 +12,7 @@ if [ -z "${ZEN_PROFILE:-}" ]; then
   ZEN_PROFILE="$ZEN_ROOT/$REL"
 fi
 CHROME="$ZEN_PROFILE/chrome"
-for f in arcToolbarTint arcUrlbarButtons arcUrlbarFit arcCompactSidebar arcDomainOnly arcAutoPip arcTabUndo arcPipFlick arcPipLayout arcColorWheel arcEasel arcNotices zzArcDebug zzPipDebug; do
+for f in arcToolbarTint arcUrlbarButtons arcUrlbarFit arcCompactSidebar arcDomainOnly arcAutoPip arcTabUndo arcPipFlick arcPipLayout arcColorWheel arcSavedThemes arcSpaceScroll arcEasel arcNotices zzArcDebug zzPipDebug; do
   rm -f "$CHROME/JS/$f.uc.js"
 done
 rm -f "$CHROME/almost-arc.css" "$CHROME/almost-arc-install.json"

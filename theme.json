@@ -78,6 +78,16 @@
           "chrome://browser/content/browser.xhtml"
         ]
       },
+      "arcSavedThemes.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
+      "arcSpaceScroll.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
       "arcNotices.uc.js": {
         "include": [
           "chrome://browser/content/browser.xhtml"

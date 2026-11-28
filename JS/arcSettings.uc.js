@@ -132,6 +132,18 @@
       "defaultValue": true
     },
     {
+      "property": "almost-arc.saved-themes",
+      "label": "Saved themes in Zen's space theme picker: save a space's colors and switch between them (restart Zen)",
+      "type": "checkbox",
+      "defaultValue": true
+    },
+    {
+      "property": "almost-arc.space-scroll-edges",
+      "label": "Mouse-wheel space switching stops at the first and last space; past the first it opens Zen's Library, like a trackpad swipe",
+      "type": "checkbox",
+      "defaultValue": true
+    },
+    {
       "property": "almost-arc.easel",
       "label": "Easels: \"New Easel\" in the sidebar's + menu, the File menu and the tab menu opens a tab you can draw in (restart Zen)",
       "type": "checkbox",
