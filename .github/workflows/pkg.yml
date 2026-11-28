@@ -16,7 +16,7 @@ name: macOS installer
 
 on:
   push:
-    paths: [pkg/**, site/install.sh, install.sh, uninstall.sh, get-zen.sh, .github/workflows/pkg.yml]
+    paths: [pkg/**, site/install.sh, install.sh, uninstall.sh, app-icon.sh, get-zen.sh, .github/workflows/pkg.yml]
   release:
     types: [published]
   schedule:
@@ -186,6 +186,29 @@ jobs:
           echo "Zen before: $OLD, after: $NEW"; test -n "$NEW"; test "$NEW" != "$OLD"
           osascript -e 'tell application "Zen" to quit' || true
           for _ in $(seq 1 30); do pgrep -x zen >/dev/null || break; sleep 1; done
+
+      - name: The App icon choice (app-icon.sh) switches the icon both ways; install.sh keeps your choice
+        run: |
+          icon_state() {
+            local hex; hex="$(xattr -px com.apple.FinderInfo /Applications/Zen.app 2>/dev/null | tr -d ' \n')"
+            local flag=0; [ "${#hex}" -ge 18 ] && [ $(( 0x${hex:16:2} & 0x04 )) -ne 0 ] && flag=1
+            local file=0; [ -e /Applications/Zen.app/Icon$'\r' ] && file=1
+            echo "file=$file flag=$flag"
+          }
+          echo "start: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"
+          # as the settings tab runs it: from Zen, no password prompt, refresh the Dock
+          ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 ./app-icon.sh zen | tee out.txt
+          grep -q "Removed the Almost Arc icon" out.txt; test "$(icon_state)" = "file=0 flag=0"
+          ALMOST_ARC_FROM_ZEN=1 ./app-icon.sh zen > out.txt; grep -q "already has its own icon" out.txt
+          # chose Zen's icon in the settings tab: install.sh leaves it
+          P="$HOME/Library/Application Support/zen"
+          REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$P/profiles.ini")"
+          echo 'user_pref("almost-arc.app-icon", "zen");' >> "$P/$REL/prefs.js"
+          ./install.sh | tee out.txt; grep -q "Keeping Zen's own icon" out.txt
+          test "$(icon_state)" = "file=0 flag=0"
+          sed -i '' '/almost-arc.app-icon/d' "$P/$REL/prefs.js"
+          ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 ./app-icon.sh almost-arc > out.txt; grep -q "Set the Almost Arc icon" out.txt
+          echo "end: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"
 
       - name: ./uninstall.sh puts Zen's own icon back
         run: |

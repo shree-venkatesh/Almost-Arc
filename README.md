@@ -94,7 +94,7 @@ The script:
 - **adds a small script loader** ([fx-autoconfig](https://github.com/MrOtherGuy/fx-autoconfig), included in `vendor/`) to the Zen app; it may ask for your password;
 - **adds the styles** to your profile's `chrome/` folder as `almost-arc.css`, imported from `userChrome.css` (your existing CSS is kept), and the scripts to `chrome/JS/`;
 - **writes the recommended settings** into `user.js` in a marked block that's easy to remove;
-- **gives Zen the Almost Arc icon** in the Dock and Finder (macOS). To keep Zen's icon, install with `ALMOST_ARC_ICON=0 ./install.sh`.
+- **gives Zen the Almost Arc icon** in the Dock and Finder (macOS). Switch between it and Zen's own in Zen → Settings → Almost Arc → App icon (updates keep your choice), or install with `ALMOST_ARC_ICON=0 ./install.sh`.
 
 For Linux, or a non-default profile or install location:
 
@@ -121,7 +121,7 @@ Removing puts everything back, including Zen's own icon.
 
 ## Settings
 
-- **Zen → Settings → Almost Arc** (or open `about:preferences#almostArc`): the mod's own tab, after Zen Mods, for every install method.
+- **Zen → Settings → Almost Arc** (or open `about:preferences#almostArc`): the mod's own tab, after Zen Mods, for every install method. On macOS it also has **App icon**: Almost Arc's or Zen's own in the Dock and Finder (not for Sine installs, which don't change the icon).
 - **With Sine:** also Zen → Settings → Sine Mods → Almost Arc.
 - **Everything, including the settings not in the tab:** open `about:config` (type it in the address bar and accept the warning), then search `almost-arc`.
 
@@ -186,6 +186,7 @@ Found a bug or have an idea? [Send feedback](https://tally.so/r/q5DNBY) with a s
 | `JS/arcSettings.uc.js` | The Almost Arc tab in Zen's settings |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `install.sh` / `uninstall.sh` | Install and remove without Sine (what every other method runs) |
+| `app-icon.sh` | Sets Zen's icon to Almost Arc's or Zen's own (macOS); used by the installers and the App icon setting |
 | `get-zen.sh` | Installs the official Zen if it's missing, and creates a profile (macOS) |
 | `pkg/` | The macOS installer (.pkg): `pkg/build.sh`, its install scripts and pages |
 | `site/` | almostarc.net, and the `curl` installer (`site/install.sh`) |

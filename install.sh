@@ -120,19 +120,16 @@ else
 fi
 
 # ---- app icon (macOS) ----------------------------------------------------
-# Gives Zen.app the Almost Arc icon in the Dock and Finder: a Finder custom icon,
-# the same as pasting one in Get Info. uninstall.sh removes it. Zen updates do
-# too, like the loader. Skip with ALMOST_ARC_ICON=0.
+# Gives Zen.app the Almost Arc icon in the Dock and Finder (app-icon.sh: a Finder
+# custom icon, the same as pasting one in Get Info). uninstall.sh removes it. Zen
+# updates do too, like the loader. Skipped with ALMOST_ARC_ICON=0, or when you chose
+# Zen's own icon in Settings > Almost Arc (almost-arc.app-icon = "zen").
 APP_BUNDLE="${ZEN_APP%/Contents/Resources}"
 if [ "$(uname)" = Darwin ] && [ "${ALMOST_ARC_ICON:-1}" != 0 ] &&
    [ "$APP_BUNDLE" != "$ZEN_APP" ] && [ -d "$APP_BUNDLE" ] && [ -f "$HERE/assets/app-icon.png" ]; then
-  ISUDO=""; [ -w "$APP_BUNDLE" ] || ISUDO="sudo"
-  # From Zen's Update button there's no Terminal to type a password in
-  [ -n "$ISUDO" ] && [ "${ALMOST_ARC_FROM_ZEN:-0}" = 1 ] && ISUDO="sudo -n"
-  if [ "$($ISUDO osascript -l JavaScript -e 'function run(a) { ObjC.import("AppKit");
-        var img = $.NSImage.alloc.initWithContentsOfFile(a[0]);
-        return $.NSWorkspace.sharedWorkspace.setIconForFileOptions(img, a[1], 0); }' \
-        "$HERE/assets/app-icon.png" "$APP_BUNDLE" 2>/dev/null)" = true ]; then
+  if grep -qs '^user_pref("almost-arc.app-icon", "zen");' "$ZEN_PROFILE/prefs.js"; then
+    echo "Keeping Zen's own icon (your choice in Settings > Almost Arc)."
+  elif "$HERE/app-icon.sh" almost-arc "$APP_BUNDLE" >/dev/null 2>&1; then
     echo "Set the Almost Arc icon on Zen (the Dock picks it up when Zen next opens)."
   else
     echo "Couldn't set the app icon (skipped; everything else still works)."

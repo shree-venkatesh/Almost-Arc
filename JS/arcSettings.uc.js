@@ -245,6 +245,8 @@
       if (!controls.has(item.property)) controls.set(item.property, []);
       controls.get(item.property).push(c.update);
     }
+    if (isMac()) appIconGroup(doc, main);
+
     const note = doc.createXULElement("description");
     note.className = "description-deemphasized";
     note.textContent = "Settings marked \"restart Zen\" take effect after you quit and reopen Zen.";
@@ -262,6 +264,99 @@
     // gotoPref then knows the pane, so about:preferences#almostArc opens on it.
     win.register_module(PANE, { init() {} });
     return true;
+  }
+
+  // ---- App icon (macOS): Almost Arc's or Zen's own, in the Dock and Finder ----
+  // Runs app-icon.sh from where install.sh was run (Homebrew, curl, the .pkg and
+  // install.sh record it in chrome/almost-arc-install.json). Sine installs never set
+  // the icon and have no such file, so the choice is shown but off there.
+  const ICON_PREF = "almost-arc.app-icon";
+  try { Services.prefs.getDefaultBranch("").setStringPref(ICON_PREF, "almost-arc"); } catch (e) {}
+  const isMac = () => { try { return Services.appinfo.OS === "Darwin"; } catch (e) { return false; } };
+  const appBundle = () => {
+    const res = Services.dirsvc.get("GreD", Ci.nsIFile).path;   // .../Zen.app/Contents/Resources
+    return res.replace(/\/Contents\/Resources\/?$/, "");
+  };
+  async function installDir() {
+    try {
+      const info = await IOUtils.readJSON(PathUtils.join(PathUtils.profileDir, "chrome", "almost-arc-install.json"));
+      if (info?.dir && await IOUtils.exists(PathUtils.join(info.dir, "app-icon.sh"))) return info.dir;
+    } catch (e) {}
+    return null;
+  }
+  const hasOurIcon = async bundle => { try { return await IOUtils.exists(bundle + "/Icon\r"); } catch (e) { return false; } };
+
+  function appIconGroup(doc, main) {
+    const group = doc.createXULElement("groupbox");
+    group.className = "highlighting-group";
+    group.setAttribute("data-category", PANE);
+    group.hidden = true;
+    const l = doc.createXULElement("label");
+    const h2 = doc.createElement("h2");
+    h2.textContent = "App icon";
+    l.appendChild(h2);
+    const desc = doc.createXULElement("description");
+    desc.className = "description-deemphasized";
+    desc.textContent = "Zen's icon in the Dock and Finder.";
+    const radios = doc.createXULElement("radiogroup");
+    const opt = (value, label) => {
+      const r = doc.createXULElement("radio");
+      r.setAttribute("value", value);
+      r.setAttribute("label", label);
+      radios.appendChild(r);
+      return r;
+    };
+    opt("almost-arc", "Almost Arc");
+    opt("zen", "Zen");
+    const status = doc.createXULElement("description");
+    status.className = "description-deemphasized";
+    status.hidden = true;
+    group.append(l, desc, radios, status);
+    main.appendChild(group);
+
+    const say = text => { status.textContent = text; status.hidden = !text; };
+    const bundle = appBundle();
+    let dir = null, current = "";
+    radios.disabled = true;
+    (async () => {
+      dir = await installDir();
+      current = (await hasOurIcon(bundle)) ? "almost-arc" : "zen";
+      radios.value = current;
+      if (!dir) { say("Available when Almost Arc is installed with Homebrew, the installer, the curl command or install.sh."); return; }
+      radios.disabled = false;
+    })();
+
+    radios.addEventListener("command", async () => {
+      const choice = radios.value;
+      if (!dir || choice === current) return;
+      radios.disabled = true;
+      say("Changing Zen's icon…");
+      let out = "", exitCode = 1;
+      try {
+        const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+        const proc = await Subprocess.call({
+          command: "/bin/bash",
+          arguments: [PathUtils.join(dir, "app-icon.sh"), choice, bundle],
+          stderr: "stdout",
+          environmentAppend: true,
+          environment: { ALMOST_ARC_FROM_ZEN: "1", ALMOST_ARC_ICON_REFRESH: "1", PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+        });
+        let chunk;
+        while ((chunk = await proc.stdout.readString())) out += chunk;
+        ({ exitCode } = await proc.wait());
+      } catch (e) { out = "Error: " + e; }
+      const last = out.trim().split("\n").pop() || "";
+      if (exitCode === 0) {
+        current = choice;
+        Services.prefs.setStringPref(ICON_PREF, choice);   // install.sh keeps Zen's own icon on updates
+        say("Done. If the Dock still shows the old one, it changes the next time you open Zen.");
+      } else {
+        radios.value = current;
+        const sudo = last.includes("couldn't") ? "sudo " : "";
+        say(`${last.replace(/^Error: /, "Couldn't change it: ")} To do it in Terminal: ${sudo}"${PathUtils.join(dir, "app-icon.sh")}" ${choice}`);
+      }
+      radios.disabled = false;
+    });
   }
 
   function onLoad(e) {
