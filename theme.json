@@ -18,6 +18,11 @@
   "readme": "README.md",
   "scripts": {
     "JS": {
+      "arcSettings.uc.js": {
+        "include": [
+          "chrome://browser/content/browser.xhtml"
+        ]
+      },
       "arcToolbarTint.uc.js": {
         "include": [
           "chrome://browser/content/browser.xhtml"

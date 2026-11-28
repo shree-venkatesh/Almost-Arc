@@ -121,8 +121,9 @@ Removing puts everything back, including Zen's own icon.
 
 ## Settings
 
-- **With Sine:** Zen → Settings → Sine Mods → Almost Arc.
-- **Otherwise:** open `about:config` (type it in the address bar and accept the warning), then search `almost-arc`.
+- **Zen → Settings → Almost Arc** (or open `about:preferences#almostArc`): the mod's own tab, after Zen Mods, for every install method.
+- **With Sine:** also Zen → Settings → Sine Mods → Almost Arc.
+- **Everything, including the settings not in the tab:** open `about:config` (type it in the address bar and accept the warning), then search `almost-arc`.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -182,6 +183,7 @@ Found a bug or have an idea? [Send feedback](https://tally.so/r/q5DNBY) with a s
 | `JS/arcTabUndo.uc.js` | Cmd+Z tab undo (close, move, pin/unpin), with safeguards |
 | `JS/arcNotices.uc.js` | The "scripts aren't running" notice and the new-release notice with its Update button |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL |
+| `JS/arcSettings.uc.js` | The Almost Arc tab in Zen's settings |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `install.sh` / `uninstall.sh` | Install and remove without Sine (what every other method runs) |
 | `get-zen.sh` | Installs the official Zen if it's missing, and creates a profile (macOS) |
