@@ -56,8 +56,13 @@
 
     const now = Math.floor(Date.now() / 1000);
     let latest = Services.prefs.getStringPref(LATEST, "");
-    if (now - Services.prefs.getIntPref(LAST, 0) > 86400) {   // at most once a day
+    // At most once a day, and again whenever the installed version changed: an answer
+    // saved before an update can be wrong after it (owner, 2026-11-28: a "1.2.10"
+    // saved while tag v1.2.10 still existed was offered as newer than 1.2.10-beta.4).
+    const FOR = LAST + "-version";   // the version that answer was for
+    if (now - Services.prefs.getIntPref(LAST, 0) > 86400 || Services.prefs.getStringPref(FOR, "") !== info.version) {
       Services.prefs.setIntPref(LAST, now);
+      Services.prefs.setStringPref(FOR, info.version);
       try {
         const headers = { Accept: "application/vnd.github+json" };
         let tag = "";

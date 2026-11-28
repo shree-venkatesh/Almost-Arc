@@ -206,11 +206,34 @@ describe("beta channel (installed with --beta)", () => {
   });
 });
 
+describe("after an update", () => {
+  test("a different installed version checks again, even within the day", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    // the saved answer is from before the update, when the tag v1.2.10 still existed
+    const r = await run({ install: { version: "1.2.10-beta.4", method: "cli", channel: "beta" },
+      tags: ["v1.2.10-beta.4", "v1.2.9"],
+      prefs: { "almost-arc.update-last-check-beta": now - 600, "almost-arc.update-latest-beta": "1.2.10",
+               "almost-arc.update-last-check-beta-version": "1.2.9" } });
+    assert.equal(r.fetched.length, 1);
+    assert.equal(r.notices.length, 0, "1.2.10 isn't out: no notice");
+    assert.equal(r.prefs.get("almost-arc.update-latest-beta"), "1.2.10-beta.4");
+  });
+  test("same version within the day: the saved answer is used", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const r = await run({ install: { version: "1.1.7", method: "cli" },
+      prefs: { "almost-arc.update-last-check": now - 600, "almost-arc.update-latest": "1.1.8",
+               "almost-arc.update-last-check-version": "1.1.7" } });
+    assert.equal(r.fetched.length, 0);
+    assert.equal(r.notices.length, 1);
+  });
+});
+
 describe("when it checks and shows", () => {
   test("at most once a day: uses the cached answer", async () => {
     const now = Math.floor(Date.now() / 1000);
     const r = await run({ install: { version: "1.1.7", method: "cli" },
-      prefs: { "almost-arc.update-last-check": now - 3600, "almost-arc.update-latest": "1.1.8" } });
+      prefs: { "almost-arc.update-last-check": now - 3600, "almost-arc.update-latest": "1.1.8",
+               "almost-arc.update-last-check-version": "1.1.7" } });
     assert.equal(r.fetched.length, 0);
     assert.equal(r.notices.length, 1);
   });
