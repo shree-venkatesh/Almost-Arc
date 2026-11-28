@@ -14,8 +14,9 @@
 #
 # Run by install.sh, uninstall.sh and the App icon choice in Zen's settings
 # (Settings > Almost Arc), which sets ALMOST_ARC_FROM_ZEN=1: no Terminal to type a
-# password in, so sudo -n. ALMOST_ARC_ICON_REFRESH=1 also refreshes Finder and the
-# Dock after setting it (removing always does), so the change shows right away.
+# password in, so sudo -n. ALMOST_ARC_ICON_REFRESH=1 also restarts the Dock after
+# setting it, so the change shows right away (removing always refreshes Finder,
+# LaunchServices and the Dock; doing that after setting wiped the new icon).
 # Last line on failure: "Error: <message>".
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -56,7 +57,10 @@ case "$CHOICE" in
     # macOS may write it a moment after saying yes (CI, 2026-11-28: gone right after)
     for _ in 1 2 3 4 5 6 7 8 9 10; do has_custom_icon && break; sleep 0.5; done
     has_custom_icon || fail "macOS said yes but didn't put the icon on $APP_BUNDLE (System Settings > Privacy & Security > App Management may need to allow it)."
-    [ "${ALMOST_ARC_ICON_REFRESH:-0}" = 1 ] && refresh
+    # Only the Dock: the full refresh (touch, lsregister -f, Finder update) right
+    # after setting it wiped the new icon again (CI, 2026-11-28: Icon\r and flag gone)
+    [ "${ALMOST_ARC_ICON_REFRESH:-0}" = 1 ] && { killall Dock 2>/dev/null || true; sleep 1; }
+    has_custom_icon || fail "the icon didn't stay on $APP_BUNDLE."
     echo "Set the Almost Arc icon on Zen."
     ;;
   zen)

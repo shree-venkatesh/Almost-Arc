@@ -209,6 +209,7 @@ jobs:
           sed -i '' '/almost-arc.app-icon/d' "$P/$REL/prefs.js"
           ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 ./app-icon.sh almost-arc > out.txt || true; cat out.txt; ls -la@ /Applications/Zen.app | head -5
           grep -q "Set the Almost Arc icon" out.txt
+          sleep 3   # still there a moment later
           echo "end: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"
 
       - name: ./uninstall.sh puts Zen's own icon back
