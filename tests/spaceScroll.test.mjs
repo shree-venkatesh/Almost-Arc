@@ -48,7 +48,8 @@ function load(opts = {}) {
     getWorkspaces: () => spaces,
     getActiveWorkspace: () => spaces[ws.active],
   };
-  const sidebar = { inside: true };
+  const sidebar = { inside: true, closest: () => null };
+  const libraryEl = { closest: sel => (sel === "zen-library" ? libraryEl : null) };
   const toolbox = { contains: t => t === sidebar };
   let wheel = null;
   const window = {
@@ -94,7 +95,7 @@ function load(opts = {}) {
     calls.push(`switch ${ws.active}`);
     zenLast = now;
   }
-  return { ws, lib, calls, scroll, prefs };
+  return { ws, lib, calls, scroll, prefs, libraryEl };
 }
 
 describe("mouse wheel over the sidebar", () => {
@@ -142,6 +143,24 @@ describe("mouse wheel over the sidebar", () => {
     assert.equal(z.ws.active, 0);
   });
 
+  test("scrolling back over the open Library itself closes it, back on the first space", () => {
+    const z = load({ spaces: 2, active: 0 });
+    z.scroll({ dx: -3 });                       // opens it
+    const e = z.scroll({ dx: 3, target: z.libraryEl });
+    assert.ok(e.stopped);
+    assert.deepEqual(z.calls, ["toggle", "close"]);
+    assert.equal(z.lib.open, false);
+    assert.equal(z.ws.active, 0);
+  });
+
+  test("wheel over the Library while it's closed (or plain vertical scrolling in it) is left alone", () => {
+    const z = load({ spaces: 2, active: 0, libOpen: true });
+    assert.equal(z.scroll({ dy: 3, target: z.libraryEl }).stopped, false);
+    const y = load({ spaces: 2, active: 0 });
+    assert.equal(y.scroll({ dx: 3, target: y.libraryEl }).stopped, false);
+    assert.deepEqual([...z.calls, ...y.calls], []);
+  });
+
   test("sidebar on the right: the Library is past the last space", () => {
     const z = load({ spaces: 2, active: 1, right: true });
     z.scroll({ dx: 3 });
@@ -183,7 +202,7 @@ describe("mouse wheel over the sidebar", () => {
   test("trackpad (pixel) scrolling and scrolling outside the sidebar are left alone", () => {
     const z = load({ spaces: 2, active: 0 });
     assert.equal(z.scroll({ dx: -3, mode: 0 }).stopped, false);
-    assert.equal(z.scroll({ dx: -3, target: {} }).stopped, false);
+    assert.equal(z.scroll({ dx: -3, target: { closest: () => null } }).stopped, false);
     assert.deepEqual(z.calls, []);
   });
 

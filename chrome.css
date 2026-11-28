@@ -502,6 +502,8 @@ toolbarbutton[command="cmd_toggleCompactModeIgnoreHover"] > .toolbarbutton-icon 
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    /* room for the selected one's outline (2 px + 2 px offset), else the panel clips it */
+    padding: 4px;
   }
   & .arc-saved-theme,
   & .arc-saved-themes-add {

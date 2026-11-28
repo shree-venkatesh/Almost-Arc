@@ -5,7 +5,8 @@
 //                 first space it jumps to the last. A trackpad swipe there opens Zen's
 //                 Library (spaces, routing, downloads…) instead. This makes the wheel do
 //                 the same: past the space next to the Library it opens the Library,
-//                 back the other way closes it, and past the other end nothing happens.
+//                 back the other way (over the Library or the sidebar) closes it, back
+//                 on that space, and past the other end nothing happens.
 //                 Pref: almost-arc.space-scroll-edges (default true)
 // ==/UserScript==
 
@@ -55,7 +56,14 @@
     if (!Services.prefs.getBoolPref(PREF, true)) return;
     const ws = window.gZenWorkspaces, toolbox = window.gNavToolbox;
     if (!ws || !toolbox || ws.privateWindowOrDisabled || !ws.workspaceEnabled) return;
-    if (!(e.composedTarget || e.target) || !toolbox.contains(e.composedTarget || e.target)) return;
+    const target = e.composedTarget || e.target;
+    if (!target) return;
+    // Over the sidebar, or over the open Library (a separate <zen-library>, outside the
+    // sidebar, so Zen's own handler never sees those: scrolling back did nothing)
+    const lib = Library();
+    const libOpen = !!lib?.isLibraryOpen;
+    const overLibrary = libOpen && !!target.closest?.("zen-library");
+    if (!toolbox.contains(target) && !overLibrary) return;
     const offset = offsetOf(e, ws);
     if (!offset) return;
 
@@ -66,8 +74,6 @@
     } catch (err) { return; }
     if (!Array.isArray(spaces) || index < 0) return;
 
-    const lib = Library();
-    const libOpen = !!lib?.isLibraryOpen;
     const libOnRight = !!lib?.libraryOnRight;
     const towardsLibrary = libOnRight ? offset > 0 : offset < 0;
     const atEnd = index + offset < 0 || index + offset > spaces.length - 1;
