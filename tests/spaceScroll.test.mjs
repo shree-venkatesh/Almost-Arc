@@ -47,6 +47,12 @@ function load(opts = {}) {
     naturalScroll: o.natural,
     getWorkspaces: () => spaces,
     getActiveWorkspace: () => spaces[ws.active],
+    changeWorkspaceShortcut(offset, whileScrolling, disableWrap) {
+      const to = disableWrap ? Math.max(0, Math.min(spaces.length - 1, ws.active + offset))
+        : (ws.active + offset + spaces.length) % spaces.length;
+      ws.active = to;
+      calls.push(`switch ${to}`);
+    },
   };
   const sidebar = { inside: true, closest: () => null };
   const libraryEl = { closest: sel => (sel === "zen-library" ? libraryEl : null) };
@@ -98,58 +104,92 @@ function load(opts = {}) {
   return { ws, lib, calls, scroll, prefs, libraryEl };
 }
 
+// Zen's direction: positive delta = next space (natural scroll off). Ours is reversed:
+// scrolling with a negative delta goes to the next space, positive to the previous.
+const NEXT = -3, PREV = 3;
+
 describe("mouse wheel over the sidebar", () => {
-  test("scrolling left from the first space opens the Library, not the last space", () => {
+  test("the direction is reversed from Zen's", () => {
+    const z = load({ spaces: 3, active: 1 });
+    z.scroll({ dx: NEXT });
+    assert.equal(z.ws.active, 2);
+    z.scroll({ dx: PREV });
+    assert.equal(z.ws.active, 1);
+    assert.deepEqual(z.calls, ["switch 2", "switch 1"]);
+  });
+
+  test("Zen's natural-scroll setting still flips it", () => {
+    const z = load({ spaces: 3, active: 1, natural: true });
+    z.scroll({ dx: 3 });
+    assert.equal(z.ws.active, 2);
+  });
+
+  test("going back from the first space opens the Library, not the last space", () => {
     const z = load({ spaces: 2, active: 0 });
-    const e = z.scroll({ dx: -3 });
+    const e = z.scroll({ dx: PREV });
     assert.ok(e.stopped);
     assert.equal(z.ws.active, 0);
     assert.deepEqual(z.calls, ["toggle"]);
     assert.ok(z.lib.open);
   });
 
-  test("scrolling right from the last space stays there (no loop)", () => {
+  test("going on from the last space stays there (no loop)", () => {
     const z = load({ spaces: 2, active: 1 });
-    z.scroll({ dx: 3 });
+    z.scroll({ dx: NEXT });
     assert.equal(z.ws.active, 1);
     assert.deepEqual(z.calls, []);
   });
 
-  test("between the ends Zen still switches spaces", () => {
+  test("a little less sensitive: under 1.5 lines does nothing, more of the same turn adds up", () => {
     const z = load({ spaces: 3, active: 1 });
-    z.scroll({ dx: -3 });
-    assert.equal(z.ws.active, 0);
-    z.scroll({ dx: 3 });
-    z.scroll({ dx: 3 });
-    assert.equal(z.ws.active, 2);
-    assert.deepEqual(z.calls, ["switch 0", "switch 1", "switch 2"]);
+    z.scroll({ dx: -1 });
+    assert.deepEqual(z.calls, []);
+    z.scroll({ dx: -1, wait: 100 });
+    assert.deepEqual(z.calls, ["switch 2"]);
+  });
+
+  test("a pause or a change of direction starts the count again", () => {
+    const z = load({ spaces: 3, active: 1 });
+    z.scroll({ dx: -1 });
+    z.scroll({ dx: -1, wait: 500 });
+    assert.deepEqual(z.calls, []);
+    z.scroll({ dx: 1, wait: 100 });
+    assert.deepEqual(z.calls, []);
+  });
+
+  test("at most one switch per 300 ms", () => {
+    const z = load({ spaces: 4, active: 0 });
+    z.scroll({ dx: NEXT });
+    z.scroll({ dx: NEXT, wait: 150 });
+    assert.deepEqual(z.calls, ["switch 1"]);
+    z.scroll({ dx: NEXT, wait: 200 });
+    assert.deepEqual(z.calls, ["switch 1", "switch 2"]);
   });
 
   test("one quick flick that reaches the first space doesn't also open the Library", () => {
     const z = load({ spaces: 2, active: 1 });
-    z.scroll({ dx: -3 });                 // Zen moves to space 0
-    z.scroll({ dx: -3, wait: 50 });       // the same flick, within Zen's 200 ms
+    z.scroll({ dx: PREV });
+    z.scroll({ dx: PREV, wait: 50 });
     assert.deepEqual(z.calls, ["switch 0"]);
-    z.scroll({ dx: -3, wait: 300 });      // a new scroll
+    z.scroll({ dx: PREV, wait: 400 });
     assert.deepEqual(z.calls, ["switch 0", "toggle"]);
   });
 
-  test("with the Library open, scrolling back closes it; scrolling into it does nothing more", () => {
+  test("with the Library open, going on closes it; going further back does nothing more", () => {
     const z = load({ spaces: 2, active: 0, libOpen: true });
-    z.scroll({ dx: -3 });
+    z.scroll({ dx: PREV });
     assert.deepEqual(z.calls, []);
-    z.scroll({ dx: 3 });
+    z.scroll({ dx: NEXT });
     assert.deepEqual(z.calls, ["close"]);
     assert.equal(z.ws.active, 0);
   });
 
   test("scrolling back over the open Library itself closes it, back on the first space", () => {
     const z = load({ spaces: 2, active: 0 });
-    z.scroll({ dx: -3 });                       // opens it
-    const e = z.scroll({ dx: 3, target: z.libraryEl });
+    z.scroll({ dx: PREV });
+    const e = z.scroll({ dx: NEXT, target: z.libraryEl });
     assert.ok(e.stopped);
     assert.deepEqual(z.calls, ["toggle", "close"]);
-    assert.equal(z.lib.open, false);
     assert.equal(z.ws.active, 0);
   });
 
@@ -163,39 +203,27 @@ describe("mouse wheel over the sidebar", () => {
 
   test("sidebar on the right: the Library is past the last space", () => {
     const z = load({ spaces: 2, active: 1, right: true });
-    z.scroll({ dx: 3 });
+    z.scroll({ dx: NEXT });
     assert.deepEqual(z.calls, ["toggle"]);
     const y = load({ spaces: 2, active: 0, right: true });
-    y.scroll({ dx: -3 });
+    y.scroll({ dx: PREV });
     assert.deepEqual(y.calls, []);
     assert.equal(y.ws.active, 0);
   });
 
-  test("natural scrolling flips the direction like Zen's", () => {
-    const z = load({ spaces: 2, active: 0, natural: true });
-    z.scroll({ dx: 3 });
-    assert.deepEqual(z.calls, ["toggle"]);
+  test("Library turned off in Zen, or no Library module: stays on the first space", () => {
+    for (const opts of [{ libraryOff: true }, { noLibrary: true }]) {
+      const z = load({ spaces: 2, active: 0, ...opts });
+      z.scroll({ dx: PREV });
+      assert.deepEqual(z.calls, []);
+      assert.equal(z.ws.active, 0);
+    }
   });
 
-  test("Library turned off in Zen: stays on the first space", () => {
-    const z = load({ spaces: 2, active: 0, libraryOff: true });
-    z.scroll({ dx: -3 });
-    assert.deepEqual(z.calls, []);
-    assert.equal(z.ws.active, 0);
-  });
-
-  test("no Library module (older Zen): still no loop", () => {
-    const z = load({ spaces: 2, active: 0, noLibrary: true });
-    z.scroll({ dx: -3 });
-    assert.deepEqual(z.calls, []);
-    assert.equal(z.ws.active, 0);
-  });
-
-  test("vertical wheel with Zen's modifier key behaves the same; without it, left to Zen", () => {
+  test("vertical wheel needs Zen's modifier key; without it, left alone", () => {
     const z = load({ spaces: 2, active: 0 });
-    const plain = z.scroll({ dy: -3 });
-    assert.equal(plain.stopped, false);
-    z.scroll({ dy: -3, ctrl: true });
+    assert.equal(z.scroll({ dy: PREV }).stopped, false);
+    z.scroll({ dy: PREV, ctrl: true });
     assert.deepEqual(z.calls, ["toggle"]);
   });
 
@@ -206,7 +234,7 @@ describe("mouse wheel over the sidebar", () => {
     assert.deepEqual(z.calls, []);
   });
 
-  test("pref off: Zen's own looping", () => {
+  test("pref off: Zen's own (its direction, looping)", () => {
     const z = load({ spaces: 2, active: 0, prefs: { "almost-arc.space-scroll-edges": false } });
     z.scroll({ dx: -3 });
     assert.equal(z.ws.active, 1);

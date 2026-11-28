@@ -20,7 +20,7 @@ Built and tested on **Zen 1.24.1b (Firefox 159), macOS 13 or later**. Linux most
 - **Cmd+Z for tabs and themes.** Reopens tabs you closed, including everything Zen's Clear closed, puts moved and pinned or unpinned tabs back, and undoes changes to a space's theme, within six [safeguards](#tab-undo-safeguards).
 - **Arc's color wheel.** Zen's space theme picker works like Arc's: the direction picks the color, and going out from the center goes from dark, through the full color, to a lighter version of it, never white or grey at the edge. Preset colors stay exactly as they are, with their dot placed where the wheel has that color, so moving it doesn't jump.
 - **Saved themes.** Under the preset colors in Zen's space theme picker: **+** saves the space's current colors, opacity and grain under a name, and a click on a saved theme puts it on the space you're editing, so you can switch back and forth (Cmd+Z undoes a switch). Right-click one to rename it, replace it with the current colors, or delete it. They're shared by every space and window.
-- **Space scrolling stops at the ends.** Switching spaces with a mouse's horizontal wheel over the sidebar no longer loops from the first space to the last: past the first space it opens Zen's Library (spaces, space routing, downloads…), like a trackpad swipe does, scrolling back closes it, and past the last space it stays put.
+- **Space scrolling with a mouse wheel.** The horizontal wheel over the sidebar switches spaces in the other direction from Zen's, a little less eagerly, and no longer loops from the first space to the last: past the first space it opens Zen's Library (spaces, space routing, downloads…), like a trackpad swipe does, scrolling back closes it, and past the last space it stays put. Trackpad swipes are unchanged.
 - **Easels.** New Easel in the + menu at the bottom of the sidebar (also in the File menu and when you right-click a tab) opens a tab you can draw and write in, without the toolbar: a pen, text boxes, rectangles, ellipses and arrows (Shift for squares, circles and straight arrows), an eraser, colors, sizes and Cmd+Z. With the select tool, drag a box (or click, Cmd+A) to pick things, then drag them around, press Delete, or click a color or size to restyle them. Cmd+Z undoes your drawing after you click in the easel, and your tab changes after you click the sidebar. It saves as you draw, and the drawing stays with the tab: pin it, put it in a folder, restart Zen. Open the same easel in several windows and each shows it; the one in the window you're not using is grayed out.
 - **Updates from inside Zen.** When a new version is out, Zen shows a bar with an **Update** button, then **Restart Zen**. If a Zen update switched the mod's scripts off, a notice gives you the command that fixes it.
 
@@ -132,7 +132,7 @@ Removing puts everything back, including Zen's own icon.
 | `almost-arc.tab-undo` | on | Cmd+Z undoes tab changes and space theme changes |
 | `almost-arc.arc-color-wheel` | on | Arc's color wheel in Zen's space theme picker (restart Zen) |
 | `almost-arc.saved-themes` | on | Saved themes in Zen's space theme picker (restart Zen) |
-| `almost-arc.space-scroll-edges` | on | Mouse-wheel space switching stops at the ends; past the first space it opens Zen's Library |
+| `almost-arc.space-scroll-edges` | on | Mouse-wheel space switching: reversed from Zen's, a little less sensitive, no looping; past the first space it opens Zen's Library |
 | `almost-arc.easel` | on | Easels: "New Easel" in the sidebar's + menu, the File menu and the tab menu (restart Zen) |
 | `almost-arc.pip-on-blur` | on | Auto PiP when you switch to another app or desktop (macOS) |
 | `almost-arc.pip-when-covered` | on | Auto PiP when Zen is minimized, or when macOS reports it completely hidden for a moment (macOS; not a reliable trigger for a window maximized over Zen; replaces Firefox's own, which flashed a PiP open and shut) |
@@ -188,7 +188,7 @@ Found a bug or have an idea? [Send feedback](https://tally.so/r/q5DNBY) with a s
 | `JS/arcNotices.uc.js` | The "scripts aren't running" notice and the new-release notice with its Update button |
 | `JS/arcDomainOnly.uc.js` | Optional domain-only URL |
 | `JS/arcSavedThemes.uc.js` | Saved themes in Zen's space theme picker |
-| `JS/arcSpaceScroll.uc.js` | Mouse-wheel space switching stops at the ends and opens Zen's Library past the first space |
+| `JS/arcSpaceScroll.uc.js` | Mouse-wheel space switching: reversed, less sensitive, stops at the ends and opens Zen's Library past the first space |
 | `JS/arcSettings.uc.js` | The Almost Arc tab in Zen's settings |
 | `theme.json`, `preferences.json` | Sine mod metadata and settings panel |
 | `install.sh` / `uninstall.sh` | Install and remove without Sine (what every other method runs) |

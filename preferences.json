@@ -115,7 +115,7 @@
   },
   {
     "property": "almost-arc.space-scroll-edges",
-    "label": "Mouse-wheel space switching stops at the first and last space; past the first it opens Zen's Library, like a trackpad swipe",
+    "label": "Mouse-wheel space switching like Arc: the other direction from Zen's, a little less sensitive, no looping; past the first space it opens Zen's Library",
     "type": "checkbox",
     "defaultValue": true
   },

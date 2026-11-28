@@ -1,12 +1,14 @@
 // ==UserScript==
-// @name           Space scrolling stops at the ends, like Arc
+// @name           Space scrolling with a mouse wheel, like Arc
 // @description    Zen's mouse-wheel space switching (a mouse's horizontal wheel over the
 //                 sidebar, or the vertical one with Zen's modifier key) loops: past the
 //                 first space it jumps to the last. A trackpad swipe there opens Zen's
-//                 Library (spaces, routing, downloads…) instead. This makes the wheel do
-//                 the same: past the space next to the Library it opens the Library,
-//                 back the other way (over the Library or the sidebar) closes it, back
-//                 on that space, and past the other end nothing happens.
+//                 Library (spaces, routing, downloads…) instead. This script does all
+//                 mouse-wheel space switching itself: the other direction from Zen's
+//                 (owner, 2026-11-27), a little less sensitive, no loop. Past the space
+//                 next to the Library it opens the Library, back the other way (over the
+//                 Library or the sidebar) closes it, back on that space, and past the
+//                 other end nothing happens. Trackpad swipes are Zen's, unchanged.
 //                 Pref: almost-arc.space-scroll-edges (default true)
 // ==/UserScript==
 
@@ -21,11 +23,16 @@
   const PREF = "almost-arc.space-scroll-edges";
   try { Services.prefs.getDefaultBranch("").setBoolPref(PREF, true); } catch (e) {}
 
-  // Zen's own numbers (ZenSpaceManager.mjs #setupSidebarHandlers, Zen 1.24.3b): one
-  // switch per 200 ms, and only line-based wheel events (a mouse, not a trackpad, whose
-  // swipes go through ZenSpacesSwipe).
-  const COOLDOWN_MS = 200;
+  // Zen's (ZenSpaceManager.mjs #setupSidebarHandlers, Zen 1.24.3b): only line-based
+  // wheel events (a mouse; a trackpad's swipes go through ZenSpacesSwipe), one switch per
+  // event of 1+ lines, then 200 ms of nothing. Slightly less sensitive here (owner,
+  // 2026-11-27): the wheel has to turn 1.5 lines the same way (added up while it keeps
+  // turning), and 300 ms between switches.
+  const COOLDOWN_MS = 300;
+  const THRESHOLD = 1.5;
+  const IDLE_MS = 400;           // a pause this long starts the count again
   let last = 0;
+  let sum = 0, sumAt = 0;
 
   let library = null;
   function Library() {
@@ -37,9 +44,9 @@
     return library || null;
   }
 
-  // Which way Zen would move for this event: -1 (previous space), +1 (next), or 0 for an
-  // event Zen's wheel handler ignores. Same checks as Zen's.
-  function offsetOf(e, ws) {
+  // The wheel's delta for space switching (0: not a space-switching event), with the
+  // same checks as Zen's.
+  function deltaOf(e, ws) {
     if (e.deltaMode !== 1) return 0;
     const vertical = e.deltaY && !e.deltaX;
     if (vertical) {
@@ -47,9 +54,7 @@
       const method = ws.activationMethod ?? "ctrl";
       if (method in keys && !keys[method]) return 0;
     }
-    const delta = vertical ? e.deltaY : e.deltaX;
-    if (Math.abs(delta) < 1) return 0;
-    return (delta > 0 ? 1 : -1) * (ws.naturalScroll ? -1 : 1);
+    return (vertical ? e.deltaY : e.deltaX) || 0;
   }
 
   function onWheel(e) {
@@ -64,8 +69,23 @@
     const libOpen = !!lib?.isLibraryOpen;
     const overLibrary = libOpen && !!target.closest?.("zen-library");
     if (!toolbox.contains(target) && !overLibrary) return;
-    const offset = offsetOf(e, ws);
-    if (!offset) return;
+    const delta = deltaOf(e, ws);
+    if (!delta) return;
+
+    // All ours: Zen's handler (capture, on the toolbox) never sees it
+    e.preventDefault();
+    e.stopPropagation();
+
+    const now = Date.now();
+    if (now - sumAt > IDLE_MS || Math.sign(delta) !== Math.sign(sum)) sum = 0;
+    sum += delta;
+    sumAt = now;
+    if (Math.abs(sum) < THRESHOLD || now - last < COOLDOWN_MS) return;
+    // Zen's direction, reversed (Zen's natural-scroll setting still flips it)
+    const offset = (sum > 0 ? -1 : 1) * (ws.naturalScroll ? -1 : 1);
+    sum = 0;
+    last = now;
+    if (ws.isChangingWorkspace) return;
 
     let spaces, index;
     try {
@@ -76,24 +96,14 @@
 
     const libOnRight = !!lib?.libraryOnRight;
     const towardsLibrary = libOnRight ? offset > 0 : offset < 0;
-    const atEnd = index + offset < 0 || index + offset > spaces.length - 1;
-    if (!libOpen && !atEnd) {
-      // Zen switches spaces: keep our clock in step with its cooldown
-      if (Date.now() - last >= COOLDOWN_MS) last = Date.now();
-      return;
-    }
-
-    // Ours from here: Zen's handler (capture, on the toolbox) never sees it
-    e.preventDefault();
-    e.stopPropagation();
-    const now = Date.now();
-    if (now - last < COOLDOWN_MS) return;
-    last = now;
-    if (ws.isChangingWorkspace) return;
-
     try {
       if (libOpen) {
         if (!towardsLibrary) lib.close();
+        return;
+      }
+      const to = index + offset;
+      if (to >= 0 && to < spaces.length) {
+        ws.changeWorkspaceShortcut(offset, false, true);   // no wrap
         return;
       }
       if (towardsLibrary && lib && lib.readySwipeOpenLibrary?.()) {
