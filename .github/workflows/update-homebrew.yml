@@ -93,7 +93,8 @@ jobs:
       - name: Update formula and push
         run: |
           f=Formula/almost-arc.rb
-          sed -i -E "s|^  url \".*\"$|  url \"$URL\"|; s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" "$f"
+          # a new release resets the revision (bumped by hand when only the wrapper changed)
+          sed -i -E "s|^  url \".*\"$|  url \"$URL\"|; s|^  sha256 \".*\"$|  sha256 \"$SHA\"|; /^  revision [0-9]+$/d; /^  # bumped when only the wrapper below changes/,/^  # \(the release workflow drops it/d" "$f"
           grep -q "$SHA" "$f" || { echo "::error::Could not update $f"; exit 1; }
           if git diff --quiet; then echo "Formula already points at $TAG"; exit 0; fi
           git config user.name "github-actions[bot]"

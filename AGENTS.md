@@ -120,7 +120,7 @@ installer and `--beta` download that file, so GitHub counts downloads (it doesn'
 count its automatic "Source code" archives). The count is an internal tracker, not
 shown in the README:
 `gh api repos/shree-venkatesh/Almost-Arc/releases -q '.[]|"\(.tag_name) \([.assets[].download_count]|add // 0)"'`
-For full Releases only (event `released`), it then points `Formula/almost-arc.rb` in
+When only the formula's wrapper changes (e.g. its `--beta`), add or bump `revision N` in the formula, or `brew upgrade` keeps the old wrapper (2026-11-28: the owner's `--beta` still picked plain vX.Y.Z tags and installed 1.2.9); the workflow drops the revision when it moves to a new release. For full Releases only (event `released`), it then points `Formula/almost-arc.rb` in
 `shree-venkatesh/homebrew-tap` at that file. It needs the
 `HOMEBREW_TAP_TOKEN` secret (fine-grained token, Contents read/write on the tap
 only). Check the Actions tab; rerun it manually with the tag if it failed.
