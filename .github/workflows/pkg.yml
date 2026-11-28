@@ -196,8 +196,13 @@ jobs:
             echo "file=$file flag=$flag"
           }
           echo "start: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"
+          # the settings tab runs the copy in the profile (the install folder may be temporary)
+          P="$HOME/Library/Application Support/zen"
+          REL="$(awk -F= '/^\[Install/{f=1} f&&/^Default=/{print $2; exit}' "$P/profiles.ini")"
+          test -x "$P/$REL/chrome/almost-arc-app/app-icon.sh"
+          test -f "$P/$REL/chrome/almost-arc-app/assets/app-icon.png"
           # as the settings tab runs it: from Zen, no password prompt, refresh the Dock
-          ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 ./app-icon.sh zen | tee out.txt
+          ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 "$P/$REL/chrome/almost-arc-app/app-icon.sh" zen | tee out.txt
           grep -q "Removed the Almost Arc icon" out.txt; test "$(icon_state)" = "file=0 flag=0"
           ALMOST_ARC_FROM_ZEN=1 ./app-icon.sh zen > out.txt; grep -q "already has its own icon" out.txt
           # chose Zen's icon in the settings tab: install.sh leaves it
@@ -207,7 +212,7 @@ jobs:
           ./install.sh | tee out.txt; grep -q "Keeping Zen's own icon" out.txt
           test "$(icon_state)" = "file=0 flag=0"
           sed -i '' '/almost-arc.app-icon/d' "$P/$REL/prefs.js"
-          ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 ./app-icon.sh almost-arc > out.txt || true; cat out.txt; ls -la@ /Applications/Zen.app | head -5
+          ALMOST_ARC_FROM_ZEN=1 ALMOST_ARC_ICON_REFRESH=1 "$P/$REL/chrome/almost-arc-app/app-icon.sh" almost-arc > out.txt || true; cat out.txt; ls -la@ /Applications/Zen.app | head -5
           grep -q "Set the Almost Arc icon" out.txt
           sleep 3   # still there a moment later
           echo "end: $(icon_state)"; test "$(icon_state)" = "file=1 flag=1"

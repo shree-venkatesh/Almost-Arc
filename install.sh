@@ -148,6 +148,13 @@ fi
 # remove scripts from older versions of this mod
 rm -f "$CHROME/JS/zzArcDebug.uc.js" "$CHROME/JS/zzPipDebug.uc.js"
 cp "$HERE"/JS/*.uc.js "$CHROME/JS/"
+# The App icon choice in Settings > Almost Arc (macOS) runs app-icon.sh; a copy in the
+# profile, since the folder this runs from can be temporary (Homebrew's --beta)
+if [ "$(uname)" = Darwin ]; then
+  mkdir -p "$CHROME/almost-arc-app/assets"
+  cp "$HERE/app-icon.sh" "$CHROME/almost-arc-app/" && chmod +x "$CHROME/almost-arc-app/app-icon.sh"
+  cp "$HERE/assets/app-icon.png" "$CHROME/almost-arc-app/assets/"
+fi
 
 # What's installed and how to update it, for the new-release notice (arcNotices.uc.js).
 VERSION="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$HERE/theme.json" | head -1)"

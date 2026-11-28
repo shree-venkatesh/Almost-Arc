@@ -17,7 +17,7 @@ for f in arcToolbarTint arcUrlbarButtons arcUrlbarFit arcCompactSidebar arcDomai
 done
 rm -f "$CHROME/almost-arc.css" "$CHROME/almost-arc-install.json"
 # the easel page arcEasel.uc.js wrote (your drawings in <profile>/almost-arc-easels stay)
-rm -rf "$CHROME/almost-arc-easel"
+rm -rf "$CHROME/almost-arc-easel" "$CHROME/almost-arc-app"
 [ -f "$CHROME/userChrome.css" ] && sed -i.bak '/almost-arc.css/d' "$CHROME/userChrome.css"
 [ -f "$ZEN_PROFILE/user.js" ] && sed -i.bak '/\/\/ >>> almost-arc/,/\/\/ <<< almost-arc/d' "$ZEN_PROFILE/user.js"
 # Remove the Almost Arc app icon that install.sh set (macOS), with app-icon.sh

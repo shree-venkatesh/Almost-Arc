@@ -267,9 +267,11 @@
   }
 
   // ---- App icon (macOS): Almost Arc's or Zen's own, in the Dock and Finder ----
-  // Runs app-icon.sh from where install.sh was run (Homebrew, curl, the .pkg and
-  // install.sh record it in chrome/almost-arc-install.json). Sine installs never set
-  // the icon and have no such file, so the choice is shown but off there.
+  // Runs the copy of app-icon.sh that install.sh puts in <profile>/chrome/almost-arc-app
+  // (1.2.11 used the folder install.sh ran from, recorded in almost-arc-install.json,
+  // but Homebrew's --beta runs it from a temporary folder that's then deleted; that
+  // folder is still tried for installs from before the copy). Sine installs never
+  // set the icon and have neither, so the choice is shown but off there.
   const ICON_PREF = "almost-arc.app-icon";
   try { Services.prefs.getDefaultBranch("").setStringPref(ICON_PREF, "almost-arc"); } catch (e) {}
   const isMac = () => { try { return Services.appinfo.OS === "Darwin"; } catch (e) { return false; } };
@@ -278,6 +280,8 @@
     return res.replace(/\/Contents\/Resources\/?$/, "");
   };
   async function installDir() {
+    const copy = PathUtils.join(PathUtils.profileDir, "chrome", "almost-arc-app");
+    try { if (await IOUtils.exists(PathUtils.join(copy, "app-icon.sh"))) return copy; } catch (e) {}
     try {
       const info = await IOUtils.readJSON(PathUtils.join(PathUtils.profileDir, "chrome", "almost-arc-install.json"));
       if (info?.dir && await IOUtils.exists(PathUtils.join(info.dir, "app-icon.sh"))) return info.dir;
