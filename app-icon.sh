@@ -53,6 +53,9 @@ case "$CHOICE" in
           "$HERE/assets/app-icon.png" "$APP_BUNDLE" 2>/dev/null)" != true ]; then
       fail "couldn't set the icon on $APP_BUNDLE."
     fi
+    # macOS may write it a moment after saying yes (CI, 2026-11-28: gone right after)
+    for _ in 1 2 3 4 5 6 7 8 9 10; do has_custom_icon && break; sleep 0.5; done
+    has_custom_icon || fail "macOS said yes but didn't put the icon on $APP_BUNDLE (System Settings > Privacy & Security > App Management may need to allow it)."
     [ "${ALMOST_ARC_ICON_REFRESH:-0}" = 1 ] && refresh
     echo "Set the Almost Arc icon on Zen."
     ;;
