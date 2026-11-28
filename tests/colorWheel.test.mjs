@@ -27,11 +27,14 @@ const PANEL_ID = "PanelUI-zen-gradient-generator";
 function load(opts = {}) {
   const o = { prefs: {}, size: 300, ...opts };
   const prefs = new Map(Object.entries(o.prefs));
+  const observers = {};
   const defaults = new Map();
   const Services = {
     prefs: {
-      getDefaultBranch: () => ({ setBoolPref: (k, v) => defaults.set(k, v) }),
+      getDefaultBranch: () => ({ setBoolPref: (k, v) => defaults.set(k, v), setIntPref: (k, v) => defaults.set(k, v) }),
       getBoolPref: (k, d) => (prefs.has(k) ? prefs.get(k) : defaults.has(k) ? defaults.get(k) : d),
+      getIntPref: (k, d) => (prefs.has(k) ? prefs.get(k) : defaults.has(k) ? defaults.get(k) : d),
+      addObserver: (k, fn) => { observers[k] = fn; },
     },
   };
   // the wheel: a square element, with inline styles recorded
@@ -50,11 +53,15 @@ function load(opts = {}) {
     for (const d of positions) placed.push({ ...d.position, color: [...this.getColorFromPosition(d.position.x, d.position.y, d.type)] });
   };
   picker.createDot = function (color) { created.push(color); };
+  if (!o.noTextMethods) Object.assign(picker, zenTextMethods(o));
+  const repaints = [];
+  picker.onWorkspaceChange = (ws, skip) => repaints.push([ws.uuid, skip]);
 
   const listeners = {};
   const timers = [];
   const window = {
     gZenThemePicker: picker,
+    gZenWorkspaces: { getActiveWorkspace: () => ({ uuid: "s1" }) },
     devicePixelRatio: 1,
     addEventListener: (type, fn) => (listeners[type] ||= []).push(fn),
     windowUtils: { getBoundsWithoutFlushing: () => ({ width: o.size, height: o.size }) },
@@ -70,7 +77,7 @@ function load(opts = {}) {
 
   const fire = (type, ev) => (listeners[type] || []).forEach(fn => fn(ev));
   return {
-    picker, wheel, style, zenCalls, ZEN_WHITE, placed, created,
+    picker, wheel, style, zenCalls, repaints, prefs, observers, ZEN_WHITE, placed, created,
     openPicker() { fire("popupshowing", { target: panel }); fire("popupshown", { target: panel }); },
     /** You click a preset swatch: Zen applies it while the click runs. */
     clickPreset(apply) {
@@ -80,6 +87,26 @@ function load(opts = {}) {
       return result;
     },
     colorAt(x, y) { return [...picker.getColorFromPosition(x, y, undefined)]; },
+  };
+}
+
+// Zen's text color decision (ZenGradientGenerator.mjs, Zen 1.24.3b), on macOS (translucent)
+function zenTextMethods(o) {
+  const lum = ([r, g, b]) => [r, g, b].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+    .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+  return {
+    canBeTransparent: o.translucent ?? true,
+    darkModeBias: "0.3",
+    blendColors(a, b, pct) { const p = pct / 100; return a.map((v, i) => Math.round(v * p + b[i] * (1 - p))); },
+    contrastRatio(a, b) { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); },
+    titleColors(acc) { return { light: this.blendColors(acc, [0, 0, 0], 12), dark: this.blendColors(acc, [255, 255, 255], 12) }; },
+    compositeOverUnderlay(rgb) { return this.blendColors(rgb, [255, 255, 255], 50); },
+    shouldBeDarkMode(acc) {
+      const bg = this.canBeTransparent ? acc : this.compositeOverUnderlay(acc);
+      const t = this.titleColors(acc);
+      const bias = this.canBeTransparent ? parseFloat(this.darkModeBias) || 0 : 0;
+      return this.contrastRatio(bg, this.blendColors(t.dark, bg, 90)) > this.contrastRatio(bg, this.blendColors(t.light, bg, (0.9 - bias) * 100));
+    },
   };
 }
 
@@ -229,5 +256,43 @@ describe("switched off", () => {
     const z = load({ noPicker: true });
     assert.doesNotThrow(() => z.openPicker());
     assert.equal(z.picker.getColorFromPosition, undefined);
+  });
+});
+
+describe("white text on lighter theme colors", () => {
+  // Owner, 2026-11-27: go a little further out before the text and icons turn black.
+  // [140, 140, 84] (an olive): black text with Zen's rule, white with 10 more bias.
+  const MID = [140, 140, 84];
+  test("a color where Zen turns the text black keeps it white", () => {
+    const z = load();
+    assert.equal(z.picker.shouldBeDarkMode(MID), true);
+    const zen = load({ prefs: { "almost-arc.white-text-bias": 0 } });
+    assert.equal(zen.picker.shouldBeDarkMode(MID), false);
+  });
+
+  test("light colors still get black text", () => {
+    const z = load();
+    assert.equal(z.picker.shouldBeDarkMode([240, 235, 200]), false);
+    assert.equal(z.picker.shouldBeDarkMode([255, 255, 255]), false);
+  });
+
+  test("dark colors stay white", () => {
+    const z = load();
+    assert.equal(z.picker.shouldBeDarkMode([40, 30, 80]), true);
+  });
+
+  test("the window is repainted at startup and when the setting changes", () => {
+    const z = load();
+    assert.deepEqual(z.repaints, [["s1", true]]);
+    z.prefs.set("almost-arc.white-text-bias", 20);
+    z.observers["almost-arc.white-text-bias"]();
+    assert.equal(z.repaints.length, 2);
+  });
+
+  test("works with the Arc color wheel off, and leaves an older Zen alone", () => {
+    const z = load({ prefs: { "almost-arc.arc-color-wheel": false } });
+    assert.equal(z.picker.shouldBeDarkMode(MID), true);
+    const old = load({ noTextMethods: true });
+    assert.equal(old.picker.shouldBeDarkMode, undefined);
   });
 });

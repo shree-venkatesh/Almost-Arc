@@ -21,6 +21,61 @@
 
   const PREF = "almost-arc.arc-color-wheel";
   try { Services.prefs.getDefaultBranch("").setBoolPref(PREF, true); } catch (e) {}
+
+  // White text and icons on lighter theme colors (owner, 2026-11-27: go a little further
+  // out on the wheel before they turn black). Zen picks dark mode (white text) when white
+  // text would contrast more with the theme's main color than black text, with black's
+  // opacity lowered by zen.theme.dark-mode-bias (0.3; only where the window can be
+  // translucent, e.g. macOS) - ZenGradientGenerator.mjs shouldBeDarkMode, Zen 1.24.3b.
+  // This lowers black's opacity by WHITE_BIAS more: 10 (%) moves the switch about 3-8%
+  // of the wheel's radius further out. 0 = Zen's own. Applies on every repaint.
+  const WHITE_BIAS = "almost-arc.white-text-bias";
+  try { Services.prefs.getDefaultBranch("").setIntPref(WHITE_BIAS, 10); } catch (e) {}
+  const TEXT_OPACITY = 0.9;      // Zen's kTextOpacity
+  function keepWhiteText(picker) {
+    if (!picker || picker.__arcWhiteText) return false;
+    const zens = picker.shouldBeDarkMode;
+    const needed = ["titleColors", "blendColors", "contrastRatio", "compositeOverUnderlay"];
+    if (typeof zens !== "function" || needed.some(m => typeof picker[m] !== "function")) return false;
+    picker.__arcWhiteText = true;
+    picker.shouldBeDarkMode = function (accent, ...rest) {
+      const zen = zens.call(this, accent, ...rest);
+      try {
+        const extra = Math.min(50, Math.max(0, Services.prefs.getIntPref(WHITE_BIAS, 10))) / 100;
+        if (zen || !extra || Services.prefs.getBoolPref("zen.theme.use-system-colors", false)) return zen;
+        const translucent = !!this.canBeTransparent;
+        const bg = translucent ? accent : this.compositeOverUnderlay(accent);
+        const titles = this.titleColors(accent);
+        const bias = (translucent ? parseFloat(this.darkModeBias) || 0 : 0) + extra;
+        const white = this.blendColors(titles.dark, bg, TEXT_OPACITY * 100);
+        const black = this.blendColors(titles.light, bg, Math.max(0, TEXT_OPACITY - bias) * 100);
+        return this.contrastRatio(bg, white) > this.contrastRatio(bg, black);
+      } catch (e) { return zen; }
+    };
+    return true;
+  }
+  // At startup (the window's theme is already painted: paint it again with this), and
+  // whenever the picker opens, in case Zen made its picker after this script ran.
+  function startWhiteText(tries = 0) {
+    const picker = window.gZenThemePicker;
+    if (!picker) { if (tries < 20) setTimeout(() => startWhiteText(tries + 1), 500); return; }
+    if (!keepWhiteText(picker)) return;
+    try {
+      const ws = window.gZenWorkspaces?.getActiveWorkspace?.();
+      if (ws) picker.onWorkspaceChange(ws, true);
+    } catch (e) {}
+  }
+  startWhiteText();
+  window.addEventListener("popupshowing", e => {
+    if (e.target?.id === "PanelUI-zen-gradient-generator") try { keepWhiteText(window.gZenThemePicker); } catch (err) {}
+  }, true);
+  Services.prefs.addObserver(WHITE_BIAS, () => {
+    try {
+      const ws = window.gZenWorkspaces?.getActiveWorkspace?.();
+      if (ws) window.gZenThemePicker?.onWorkspaceChange?.(ws, true);
+    } catch (e) {}
+  });
+
   if (!Services.prefs.getBoolPref(PREF, true)) return;
 
   const PANEL_ID = "PanelUI-zen-gradient-generator";
