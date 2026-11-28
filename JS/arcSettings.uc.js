@@ -221,6 +221,8 @@
     heading.appendChild(h1);
     main.appendChild(heading);
 
+    if (isMac()) appIconGroup(doc, main);   // first: it's the one people look for
+
     const controls = new Map();   // pref -> [update()]
     let group = null;
     const newGroup = title => {
@@ -245,8 +247,6 @@
       if (!controls.has(item.property)) controls.set(item.property, []);
       controls.get(item.property).push(c.update);
     }
-    if (isMac()) appIconGroup(doc, main);
-
     const note = doc.createXULElement("description");
     note.className = "description-deemphasized";
     note.textContent = "Settings marked \"restart Zen\" take effect after you quit and reopen Zen.";
@@ -290,6 +290,22 @@
   }
   const hasOurIcon = async bundle => { try { return await IOUtils.exists(bundle + "/Icon\r"); } catch (e) { return false; } };
 
+  const ICON_CSS = `
+    .arc-icon-choices { gap: 12px; margin-block: 8px 4px; }
+    .arc-icon-choice {
+      align-items: center; gap: 8px; padding: 12px 18px 10px; cursor: pointer;
+      border: 2px solid transparent; border-radius: 14px;
+    }
+    .arc-icon-choice:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+    .arc-icon-choice[selected] { border-color: var(--in-content-accent-color, AccentColor); }
+    .arc-icon-choice:focus-visible { outline: 2px solid var(--in-content-focus-outline-color, AccentColor); outline-offset: 2px; }
+    .arc-icon-choice > img { width: 72px; height: 72px; object-fit: contain; box-sizing: border-box; }
+    /* Zen's logo fills its square; app-icon.png has macOS's icon margin (824 of 1024) */
+    .arc-icon-choice[data-value="zen"] > img { padding: 7px; }
+    .arc-icon-choices[disabled] { opacity: .55; }
+    .arc-icon-choices[disabled] > .arc-icon-choice { cursor: default; background: none; }
+  `;
+
   function appIconGroup(doc, main) {
     const group = doc.createXULElement("groupbox");
     group.className = "highlighting-group";
@@ -302,38 +318,70 @@
     const desc = doc.createXULElement("description");
     desc.className = "description-deemphasized";
     desc.textContent = "Zen's icon in the Dock and Finder.";
-    const radios = doc.createXULElement("radiogroup");
-    const opt = (value, label) => {
-      const r = doc.createXULElement("radio");
-      r.setAttribute("value", value);
-      r.setAttribute("label", label);
-      radios.appendChild(r);
-      return r;
+    const style = doc.createElement("style");
+    style.textContent = ICON_CSS;
+
+    // two tiles side by side, each the icon with its name under it
+    const tiles = doc.createXULElement("hbox");
+    tiles.className = "arc-icon-choices";
+    tiles.setAttribute("role", "radiogroup");
+    tiles.setAttribute("aria-label", "App icon");
+    const tile = (value, name, src) => {
+      const t = doc.createXULElement("vbox");
+      t.className = "arc-icon-choice";
+      t.dataset.value = value;
+      t.setAttribute("role", "radio");
+      t.setAttribute("tabindex", "0");
+      const img = doc.createElement("img");
+      img.alt = "";
+      if (src) img.src = src;
+      const lab = doc.createXULElement("label");
+      lab.textContent = name;
+      t.append(img, lab);
+      tiles.appendChild(t);
+      return { t, img };
     };
-    opt("almost-arc", "Almost Arc");
-    opt("zen", "Zen");
+    const ours = tile("almost-arc", "Almost Arc", "");
+    tile("zen", "Zen", "chrome://branding/content/icon128.png");
     const status = doc.createXULElement("description");
     status.className = "description-deemphasized";
     status.hidden = true;
-    group.append(l, desc, radios, status);
+    group.append(style, l, desc, tiles, status);
     main.appendChild(group);
 
     const say = text => { status.textContent = text; status.hidden = !text; };
+    const show = value => {
+      for (const t of tiles.children) {
+        const on = t.dataset.value === value;
+        t.toggleAttribute("selected", on);
+        t.setAttribute("aria-checked", String(on));
+      }
+    };
+    let disabled = true;
+    const setDisabled = d => { disabled = d; tiles.toggleAttribute("disabled", d); tiles.setAttribute("aria-disabled", String(d)); };
+    setDisabled(true);
+
     const bundle = appBundle();
     let dir = null, current = "";
-    radios.disabled = true;
     (async () => {
       dir = await installDir();
+      // the Almost Arc icon, from the copy install.sh keeps (data: images are allowed here)
+      try {
+        const png = await IOUtils.read(PathUtils.join(dir || "", "assets", "app-icon.png"));
+        let bin = "";
+        for (let i = 0; i < png.length; i += 0x8000) bin += String.fromCharCode.apply(null, png.subarray(i, i + 0x8000));
+        ours.img.src = "data:image/png;base64," + btoa(bin);
+      } catch (e) {}
       current = (await hasOurIcon(bundle)) ? "almost-arc" : "zen";
-      radios.value = current;
+      show(current);
       if (!dir) { say("Available when Almost Arc is installed with Homebrew, the installer, the curl command or install.sh."); return; }
-      radios.disabled = false;
+      setDisabled(false);
     })();
 
-    radios.addEventListener("command", async () => {
-      const choice = radios.value;
-      if (!dir || choice === current) return;
-      radios.disabled = true;
+    async function choose(choice) {
+      if (disabled || !dir || choice === current) return;
+      setDisabled(true);
+      show(choice);
       say("Changing Zen's icon…");
       let out = "", exitCode = 1;
       try {
@@ -355,11 +403,22 @@
         Services.prefs.setStringPref(ICON_PREF, choice);   // install.sh keeps Zen's own icon on updates
         say("Done. If the Dock still shows the old one, it changes the next time you open Zen.");
       } else {
-        radios.value = current;
+        show(current);
         const sudo = last.includes("couldn't") ? "sudo " : "";
         say(`${last.replace(/^Error: /, "Couldn't change it: ")} To do it in Terminal: ${sudo}"${PathUtils.join(dir, "app-icon.sh")}" ${choice}`);
       }
-      radios.disabled = false;
+      setDisabled(false);
+    }
+    tiles.addEventListener("click", e => { const t = e.target.closest?.(".arc-icon-choice"); if (t) choose(t.dataset.value); });
+    tiles.addEventListener("keydown", e => {
+      const t = e.target.closest?.(".arc-icon-choice");
+      if (!t) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(t.dataset.value); }
+      else if (/^Arrow(Left|Right|Up|Down)$/.test(e.key)) {
+        e.preventDefault();
+        const other = [...tiles.children].find(x => x !== t);
+        other?.focus();
+      }
     });
   }
 
