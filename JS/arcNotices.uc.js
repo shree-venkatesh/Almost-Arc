@@ -30,10 +30,17 @@
   // Default-branch prefs aren't saved, so this lasts one session: one window per session shows it.
   const SHOWN = "almost-arc.update-shown-this-session";
 
-  const parse = v => String(v).replace(/^v/, "").split(".").map(n => parseInt(n, 10) || 0);
+  // Versions: "X.Y.Z" (a Release) or "X.Y.Z-beta.N", a beta for the next Release
+  // X.Y.Z: 1.2.10-beta.1 < 1.2.10-beta.2 < 1.2.10 < 1.2.11-beta.1 (owner, 2026-11-28).
+  const VERSION = /^\d+\.\d+\.\d+(-beta\.\d+)?$/;
+  const parse = v => {
+    const m = String(v).replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?/);
+    if (!m) return [0, 0, 0, Infinity];
+    return [+m[1], +m[2], +m[3], m[4] === undefined ? Infinity : +m[4]];   // a Release sorts after its betas
+  };
   function newer(a, b) {
     const x = parse(a), y = parse(b);
-    for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+    for (let i = 0; i < 4; i++) if (x[i] !== y[i]) return x[i] > y[i];
     return false;
   }
 
@@ -59,14 +66,14 @@
           if (r.ok) {
             for (const t of await r.json()) {
               const v = String(t.name || "").replace(/^v/, "");
-              if (/^\d+\.\d+\.\d+$/.test(v) && (!tag || newer(v, tag))) tag = v;
+              if (VERSION.test(v) && (!tag || newer(v, tag))) tag = v;
             }
           }
         } else {
           const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers });
           if (r.ok) tag = String((await r.json()).tag_name || "").replace(/^v/, "");
         }
-        if (/^\d+\.\d+\.\d+$/.test(tag)) { latest = tag; Services.prefs.setStringPref(LATEST, tag); }
+        if (VERSION.test(tag)) { latest = tag; Services.prefs.setStringPref(LATEST, tag); }
       } catch (e) {}
     }
     if (!latest || !newer(latest, info.version)) return;

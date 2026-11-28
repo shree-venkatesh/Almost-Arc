@@ -64,11 +64,14 @@ main() {
     version="${ALMOST_ARC_VERSION:?ALMOST_ARC_VERSION is needed with ALMOST_ARC_TARBALL}"
     tag="v$version"
   elif [ "$beta" = 1 ]; then
-    # newest vX.Y.Z tag; tags that never became a Release are the beta channel
+    # newest tag: vX.Y.Z (a Release) or vX.Y.Z-beta.N (a beta for Release X.Y.Z,
+    # which sorts before it); tags that never became a Release are the beta channel
     tag="$(curl -fsSL "https://api.github.com/repos/$REPO/tags?per_page=100")" \
       || fail "couldn't reach GitHub."
-    tag="$(printf '%s\n' "$tag" | grep -o '"name": *"v[0-9]*[.][0-9]*[.][0-9]*"' \
-      | grep -o 'v[0-9.]*' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
+    tag="$(printf '%s\n' "$tag" | grep -oE '"name": *"v[0-9]+[.][0-9]+[.][0-9]+(-beta[.][0-9]+)?"' \
+      | grep -oE '[0-9]+[.][0-9]+[.][0-9]+(-beta[.][0-9]+)?' \
+      | awk -F'[.-]' '{ b = (NF > 3) ? $5 : 999999; print $1, $2, $3, b, $0 }' \
+      | sort -k1,1n -k2,2n -k3,3n -k4,4n | tail -n 1 | awk '{ print $5 }')"
     [ -n "$tag" ] || fail "couldn't find the latest tag."
     tag="v$tag"; label=" (beta)"
   else

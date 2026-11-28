@@ -177,6 +177,25 @@ describe("beta channel (installed with --beta)", () => {
   test("up to date: no notice", async () => {
     assert.equal((await run({ install: beta("1.1.9"), tags: ["v1.1.9"] })).notices.length, 0);
   });
+  test("betas are X.Y.Z-beta.N, for the next Release X.Y.Z: newest beta wins", async () => {
+    const r = await run({ install: beta("1.2.10-beta.1"),
+      tags: ["v1.2.9", "v1.2.10-beta.2", "v1.2.10-beta.10", "v1.2.10-beta.3", "v1.2.8-linux.6"] });
+    assert.match(r.notices[0].label, /1\.2\.10-beta\.10 is out \(you have 1\.2\.10-beta\.1\)/);
+  });
+  test("the Release comes after its betas; the next version's betas after that", async () => {
+    let r = await run({ install: beta("1.2.10-beta.4"), tags: ["v1.2.10-beta.4", "v1.2.10"] });
+    assert.match(r.notices[0].label, /1\.2\.10 is out/);
+    r = await run({ install: beta("1.2.10"), tags: ["v1.2.10", "v1.2.11-beta.1", "v1.2.10-beta.4"] });
+    assert.match(r.notices[0].label, /1\.2\.11-beta\.1 is out/);
+    assert.equal((await run({ install: beta("1.2.10"), tags: ["v1.2.10-beta.4", "v1.2.10"] })).notices.length, 0);
+  });
+  test("Linux builds (X.Y.Z-linux.N) are never offered", async () => {
+    assert.equal((await run({ install: beta("1.2.8"), tags: ["v1.2.8-linux.6", "v1.2.8"] })).notices.length, 0);
+  });
+  test("release channel on a beta: the Release it leads to is newer", async () => {
+    const r = await run({ install: { version: "1.2.10-beta.4", method: "cli" }, release: "v1.2.10" });
+    assert.match(r.notices[0].label, /1\.2\.10 is out/);
+  });
   test("keeps its own cache, separate from the release channel", async () => {
     const now = Math.floor(Date.now() / 1000);
     const r = await run({ install: beta("1.1.8"), tags: ["v1.1.9"],
